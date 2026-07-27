@@ -1,0 +1,377 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ============================================================
+   NEXO ARCADE — Design tokens
+   Paleta: consola moderna / editorial
+   ============================================================ */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-space-grotesk), ui-monospace, monospace;
+
+  /* NEXO brand */
+  --color-nexo-bg: #171814;
+  --color-nexo-surface: #22231e;
+  --color-nexo-surface-2: #2a2c25;
+  --color-nexo-cream: #f4f0e6;
+  --color-nexo-green: #b8ff3d;
+  --color-nexo-green-dim: #8fcc2e;
+  --color-nexo-muted: #a7aa9a;
+  --color-nexo-border: #3b3d34;
+  --color-nexo-light: #eeeee7;
+  --color-nexo-light-text: #1b1c18;
+
+  /* shadcn-compatible aliases */
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  /* Light mode (used only on .nexo-light sections) */
+  --radius: 0.625rem;
+  --background: #eeeee7;
+  --foreground: #1b1c18;
+  --card: #ffffff;
+  --card-foreground: #1b1c18;
+  --popover: #ffffff;
+  --popover-foreground: #1b1c18;
+  --primary: #171814;
+  --primary-foreground: #f4f0e6;
+  --secondary: #e2e2da;
+  --secondary-foreground: #1b1c18;
+  --muted: #e2e2da;
+  --muted-foreground: #5b5d54;
+  --accent: #b8ff3d;
+  --accent-foreground: #171814;
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: #c9c9c0;
+  --input: #c9c9c0;
+  --ring: #b8ff3d;
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --sidebar: #ffffff;
+  --sidebar-foreground: #1b1c18;
+  --sidebar-primary: #171814;
+  --sidebar-primary-foreground: #f4f0e6;
+  --sidebar-accent: #e2e2da;
+  --sidebar-accent-foreground: #1b1c18;
+  --sidebar-border: #c9c9c0;
+  --sidebar-ring: #b8ff3d;
+}
+
+.dark {
+  /* NEXO dark mode (default) */
+  --background: #171814;
+  --foreground: #f4f0e6;
+  --card: #22231e;
+  --card-foreground: #f4f0e6;
+  --popover: #22231e;
+  --popover-foreground: #f4f0e6;
+  --primary: #b8ff3d;
+  --primary-foreground: #171814;
+  --secondary: #2a2c25;
+  --secondary-foreground: #f4f0e6;
+  --muted: #2a2c25;
+  --muted-foreground: #a7aa9a;
+  --accent: #b8ff3d;
+  --accent-foreground: #171814;
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: #3b3d34;
+  --input: #3b3d34;
+  --ring: #b8ff3d;
+  --chart-1: #b8ff3d;
+  --chart-2: #f4f0e6;
+  --chart-3: #a7aa9a;
+  --chart-4: #8fcc2e;
+  --chart-5: #6f6f63;
+  --sidebar: #22231e;
+  --sidebar-foreground: #f4f0e6;
+  --sidebar-primary: #b8ff3d;
+  --sidebar-primary-foreground: #171814;
+  --sidebar-accent: #2a2c25;
+  --sidebar-accent-foreground: #f4f0e6;
+  --sidebar-border: #3b3d34;
+  --sidebar-ring: #b8ff3d;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html,
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+  }
+  body {
+    font-feature-settings: "ss01", "ss02";
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+}
+
+/* ============================================================
+   NEXO utility classes
+   ============================================================ */
+@layer components {
+  .nexo-eyebrow {
+    font-family: var(--font-space-grotesk), sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    font-size: 0.72rem;
+    font-weight: 500;
+    color: var(--color-nexo-muted);
+  }
+
+  .nexo-display {
+    font-family: var(--font-space-grotesk), sans-serif;
+    font-weight: 600;
+    letter-spacing: -0.03em;
+    line-height: 0.95;
+  }
+
+  .nexo-btn-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.8rem 1.4rem;
+    border-radius: 8px;
+    background-color: var(--color-nexo-green);
+    color: var(--color-nexo-bg);
+    font-weight: 600;
+    font-size: 0.95rem;
+    letter-spacing: -0.01em;
+    transition: transform 0.18s ease, box-shadow 0.18s ease,
+      filter 0.18s ease;
+    box-shadow: 0 0 0 0 rgba(184, 255, 61, 0);
+  }
+  .nexo-btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 32px -12px rgba(184, 255, 61, 0.55);
+    filter: brightness(1.05);
+  }
+  .nexo-btn-primary:active {
+    transform: translateY(0);
+  }
+  .nexo-btn-primary:focus-visible {
+    outline: 2px solid var(--color-nexo-green);
+    outline-offset: 3px;
+  }
+
+  .nexo-btn-ghost {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.8rem 1.4rem;
+    border-radius: 8px;
+    background-color: transparent;
+    color: var(--color-nexo-cream);
+    border: 1px solid var(--color-nexo-border);
+    font-weight: 500;
+    font-size: 0.95rem;
+    transition: border-color 0.18s ease, color 0.18s ease,
+      transform 0.18s ease, background-color 0.18s ease;
+  }
+  .nexo-btn-ghost:hover {
+    border-color: var(--color-nexo-green);
+    color: var(--color-nexo-green);
+    transform: translateY(-2px);
+  }
+  .nexo-btn-ghost:focus-visible {
+    outline: 2px solid var(--color-nexo-green);
+    outline-offset: 3px;
+  }
+
+  .nexo-card {
+    background-color: var(--color-nexo-surface);
+    border: 1px solid var(--color-nexo-border);
+    border-radius: 18px;
+    transition: border-color 0.25s ease, transform 0.25s ease,
+      box-shadow 0.25s ease;
+  }
+  .nexo-card:hover {
+    border-color: var(--color-nexo-green);
+    transform: translateY(-3px);
+    box-shadow: 0 20px 40px -24px rgba(0, 0, 0, 0.6);
+  }
+
+  .nexo-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 0.95rem;
+    border-radius: 999px;
+    border: 1px solid var(--color-nexo-border);
+    color: var(--color-nexo-muted);
+    font-size: 0.82rem;
+    letter-spacing: 0.02em;
+    transition: all 0.2s ease;
+    background: transparent;
+  }
+  .nexo-pill[data-active="true"] {
+    background-color: var(--color-nexo-green);
+    border-color: var(--color-nexo-green);
+    color: var(--color-nexo-bg);
+    font-weight: 600;
+  }
+  .nexo-pill:hover:not([data-active="true"]) {
+    border-color: var(--color-nexo-green);
+    color: var(--color-nexo-cream);
+  }
+
+  .nexo-divider {
+    height: 1px;
+    background: linear-gradient(
+      to right,
+      transparent,
+      var(--color-nexo-border),
+      transparent
+    );
+  }
+}
+
+/* ============================================================
+   Animations (respect prefers-reduced-motion)
+   ============================================================ */
+@keyframes nexo-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes nexo-pulse-green {
+  0%,
+  100% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.04);
+  }
+}
+
+@keyframes nexo-spin-slow {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes nexo-grid-drift {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 80px 80px;
+  }
+}
+
+.nexo-fade-up {
+  animation: nexo-fade-up 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.nexo-stagger > * {
+  animation: nexo-fade-up 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.nexo-stagger > *:nth-child(1) {
+  animation-delay: 0ms;
+}
+.nexo-stagger > *:nth-child(2) {
+  animation-delay: 100ms;
+}
+.nexo-stagger > *:nth-child(3) {
+  animation-delay: 200ms;
+}
+.nexo-stagger > *:nth-child(4) {
+  animation-delay: 300ms;
+}
+.nexo-stagger > *:nth-child(5) {
+  animation-delay: 400ms;
+}
+.nexo-stagger > *:nth-child(6) {
+  animation-delay: 500ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Scrollbar styling for filter rows on mobile */
+.nexo-scroll-x {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.nexo-scroll-x::-webkit-scrollbar {
+  display: none;
+}
+
+/* Custom scrollbar for long lists */
+.nexo-scroll-y {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-nexo-border) transparent;
+}
+.nexo-scroll-y::-webkit-scrollbar {
+  width: 8px;
+}
+.nexo-scroll-y::-webkit-scrollbar-track {
+  background: transparent;
+}
+.nexo-scroll-y::-webkit-scrollbar-thumb {
+  background-color: var(--color-nexo-border);
+  border-radius: 999px;
+}
+.nexo-scroll-y::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-nexo-muted);
+}

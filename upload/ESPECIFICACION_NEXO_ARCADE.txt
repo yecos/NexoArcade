@@ -1,0 +1,611 @@
+ESPECIFICACIÓN COMPLETA — NEXO ARCADE
+Documento de reconstrucción para otra IA
+Versión: 1.0
+Idioma de la interfaz: español
+
+======================================================================
+1. OBJETIVO DEL PROYECTO
+======================================================================
+
+Construir una aplicación web llamada “NEXO ARCADE” que funcione como portal
+para:
+
+1. Descubrir proyectos de videojuegos de código abierto.
+2. Ejecutar, directamente en el navegador, ROMs retro aportadas legalmente por
+   el propio usuario.
+3. Explicar con claridad que los archivos se procesan localmente y no se suben
+   al servidor.
+
+La experiencia debe sentirse como una consola moderna y editorial, no como una
+web retro llena de píxeles, neones y elementos nostálgicos genéricos.
+
+No se deben alojar, distribuir ni enlazar ROMs comerciales, BIOS, claves,
+firmware ni contenido protegido.
+
+No implementar emulación de Nintendo Switch en la primera versión. Técnicamente
+es mucho más pesada e inestable en navegador y, además, suele requerir firmware,
+claves y copias de juegos que debe aportar legalmente cada usuario. La
+arquitectura puede dejar espacio para investigar soporte futuro, pero nunca
+debe incluir ni facilitar material protegido.
+
+
+======================================================================
+2. IDENTIDAD VISUAL
+======================================================================
+
+Dirección: “consola moderna/editorial”.
+
+Sensación deseada:
+
+- Oscura, premium, arquitectónica y minimalista.
+- Tipografía grande y segura.
+- Mucho espacio negativo.
+- Acentos eléctricos usados con moderación.
+- Tarjetas de videojuegos con arte abstracto y cinematográfico.
+- Animaciones discretas; evitar efectos llamativos que dificulten la lectura.
+
+Paleta:
+
+- Fondo principal: #171814
+- Superficies/paneles: #22231E
+- Texto crema: #F4F0E6
+- Verde eléctrico: #B8FF3D
+- Texto secundario: #A7AA9A
+- Bordes oscuros: #3B3D34
+- Secciones claras: aproximadamente #EEEEE7
+- Texto sobre secciones claras: #1B1C18
+
+Tipografía:
+
+- Preferida: Space Grotesk.
+- Alternativas: Satoshi, Inter o sans-serif geométrica similar.
+- Titulares con tracking negativo, gran escala y peso 500–600.
+- Etiquetas técnicas en mayúsculas, tamaño pequeño y tracking amplio.
+
+Formas:
+
+- Botones principales verdes con esquinas de 7–8 px.
+- Tarjetas con radio de 18 px.
+- Filtros tipo píldora.
+- Líneas finas para separar navegación, listas y pasos.
+
+Animación:
+
+- Entrada inicial: opacidad + desplazamiento vertical de unos 20 px.
+- Tarjetas con aparición escalonada de aproximadamente 100 ms.
+- Hover de botones: ligero ascenso y aumento de brillo.
+- Respetar prefers-reduced-motion.
+
+
+======================================================================
+3. ESTRUCTURA DE LA PÁGINA
+======================================================================
+
+3.1 Navegación
+
+- Logotipo textual: NEXO ARCADE.
+- Símbolo: rombo/cuadrado verde girado 45 grados.
+- Enlaces:
+  - Juegos
+  - Emuladores
+  - Cómo funciona
+- CTA: “Abrir biblioteca”.
+- En móvil ocultar los enlaces intermedios y conservar marca + CTA.
+
+3.2 Hero
+
+Etiqueta:
+“CÓDIGO ABIERTO · SIN INSTALAR”
+
+Titular:
+“Juega
+sin instalar.”
+
+Descripción:
+“Juegos libres y clásicos retro, directamente en tu navegador. Tus archivos
+nunca salen de tu dispositivo.”
+
+Acciones:
+
+- Primaria: “Cargar un juego”.
+- Secundaria: “Explorar catálogo”.
+
+Composición:
+
+- Columna izquierda para texto.
+- Columna derecha con una escena abstracta arquitectónica: portal/monolito
+  oscuro iluminado por un disco verde eléctrico.
+- Puede construirse con CSS o con una imagen original.
+- No utilizar personajes, marcas ni material de juegos comerciales.
+
+3.3 Selección NEXO
+
+Título:
+“Entra a otro mundo.”
+
+Tres tarjetas:
+
+A. OpenArena
+- Etiqueta: “ARENA FPS · OPEN SOURCE”.
+- Arte: arena futurista cálida y abstracta.
+- Acción: abrir el sitio oficial del proyecto en otra pestaña.
+- No afirmar que se puede jugar dentro del portal si no se ha integrado una
+  compilación WebAssembly verificable.
+
+B. Freedoom
+- Etiqueta: “RETRO FPS · LIBRE”.
+- Arte: fortaleza oscura con una puerta verde.
+- Acción: abrir el sitio oficial del proyecto en otra pestaña.
+- Freedoom aporta recursos libres compatibles con motores Doom; la integración
+  jugable requiere un motor web separado.
+
+C. Retro Library
+- Etiqueta: “TUS ROMS · LOCAL”.
+- Arte: paisaje geométrico retrofuturista.
+- Acción: abrir el selector local de archivos.
+
+Enlaces oficiales recomendados:
+
+- OpenArena: https://openarena.ws/
+- Freedoom: https://freedoom.github.io/
+
+3.4 Emuladores
+
+Título:
+“Tu archivo. Tu partida.”
+
+Texto:
+“El emulador se ejecuta en esta pestaña. NEXO no almacena ni distribuye juegos
+comerciales.”
+
+Filtros:
+
+- Todos
+- Nintendo
+- Portátiles
+- PlayStation
+
+Sistemas iniciales:
+
+- Nintendo / NES: .nes
+- Super Nintendo / SNES: .sfc, .smc
+- Game Boy: .gb, .gbc
+- Game Boy Advance: .gba
+- Nintendo DS, opcional: .nds
+- Nintendo 64: .n64, .z64, .v64
+- PlayStation 1: .bin, .iso, .chd
+
+Cada tarjeta de sistema debe mostrar:
+
+- Nombre completo.
+- Nombre abreviado del núcleo.
+- Extensiones compatibles.
+- Icono abstracto circular de color.
+- Acción que abre el selector de archivo.
+
+3.5 Cómo funciona
+
+Título:
+“Sin cuentas. Sin subidas.
+Sin vueltas.”
+
+Tres pasos:
+
+01 — Elige tu archivo
+“Selecciona una ROM que poseas legalmente desde tu dispositivo.”
+
+02 — Detectamos la consola
+“El formato nos permite preparar el núcleo correcto automáticamente.”
+
+03 — Empieza a jugar
+“Controles, guardado y pantalla completa, dentro del navegador.”
+
+CTA final:
+“Abrir mi biblioteca”.
+
+3.6 Pie de página
+
+- Marca NEXO ARCADE.
+- Frase: “Una pequeña puerta a mundos abiertos.”
+- Copyright: “© 2026 NEXO STUDIO”.
+- Añadir enlace futuro a privacidad/licencias si el producto evoluciona.
+
+
+======================================================================
+4. FUNCIONAMIENTO DEL EMULADOR
+======================================================================
+
+Implementación recomendada:
+
+- Usar EmulatorJS o una alternativa libre equivalente.
+- Cargar el runtime bajo demanda, solamente después de que el usuario elija un
+  archivo compatible.
+- No cargar una ROM de demostración comercial.
+- Nunca enviar la ROM a una API ni guardarla en almacenamiento remoto.
+- Crear una Object URL local mediante URL.createObjectURL(file).
+- Revocar la Object URL al cerrar o reemplazar el juego para evitar fugas de
+  memoria.
+
+Configuración conceptual de EmulatorJS:
+
+EJS_player = "#game"
+EJS_core = núcleo detectado
+EJS_gameName = nombre del archivo sin extensión
+EJS_gameUrl = URL local creada desde el File
+EJS_pathtodata = "https://cdn.emulatorjs.org/stable/data/"
+EJS_startOnLoaded = true
+
+Después de establecer la configuración, cargar:
+
+https://cdn.emulatorjs.org/stable/data/loader.js
+
+Mapa de extensiones:
+
+nes -> nes
+sfc, smc -> snes
+gb, gbc -> gb
+gba -> gba
+nds -> nds
+n64, z64, v64 -> n64
+bin, iso, chd -> psx
+
+Notas importantes:
+
+- Confirmar los nombres exactos de los cores con la versión concreta de
+  EmulatorJS utilizada.
+- Algunos formatos de PlayStation requieren varios archivos o estructura de
+  disco. Se debe documentar la compatibilidad real y no prometer que cualquier
+  BIN aislado funcionará.
+- Si se admite .cue, hay que resolver sus archivos asociados; un input simple
+  de un solo archivo no es suficiente. Para una primera versión se recomienda
+  CHD o implementar selección múltiple/directorio.
+- ZIP solo debe aceptarse si el emulador y el núcleo elegidos lo soportan y se
+  puede identificar de forma segura el contenido.
+- Las BIOS no deben incluirse. Si un núcleo requiere BIOS, pedir al usuario su
+  copia legal y mantenerla local.
+
+Selector de archivos:
+
+accept=".nes,.sfc,.smc,.gb,.gbc,.gba,.nds,.n64,.z64,.v64,.bin,.iso,.chd"
+
+Flujo:
+
+1. Usuario pulsa cualquier CTA de biblioteca o una consola.
+2. Se abre un input type="file" oculto.
+3. Se extrae y normaliza la extensión.
+4. Se busca el núcleo correspondiente.
+5. Si no existe, mostrar un error comprensible y no ejecutar scripts.
+6. Si existe, abrir un modal oscuro a pantalla completa.
+7. Crear el contenedor #game.
+8. Configurar e iniciar EmulatorJS.
+9. Permitir cerrar el modal y limpiar script, contenedor y Object URL.
+
+Modal:
+
+- position: fixed; inset: 0.
+- Fondo negro casi opaco.
+- Contenedor de juego con tamaño máximo aproximado de 1100 × 720 px.
+- Adaptación a móvil y orientación horizontal.
+- Botón visible “Cerrar ×”.
+- role="dialog", aria-modal="true" y nombre accesible.
+- Gestionar foco y Escape en una implementación final.
+
+
+======================================================================
+5. TECNOLOGÍA Y ARQUITECTURA
+======================================================================
+
+Opción recomendada para un entorno convencional:
+
+- Next.js con App Router.
+- React + TypeScript.
+- CSS global o CSS Modules.
+- Página principal como Client Component porque usa estado, selector de
+  archivos y carga dinámica del emulador.
+- Aplicación estática siempre que el despliegue lo permita.
+
+Estructura mínima:
+
+app/
+  layout.tsx
+  page.tsx
+  globals.css
+public/
+  favicon.svg
+  artes originales opcionales
+package.json
+tsconfig.json
+next.config.ts
+
+Alternativa:
+
+- Vite + React + TypeScript, ideal si el hosting espera una carpeta “dist”.
+- El comportamiento y el diseño deben mantenerse idénticos.
+
+Estado de React sugerido:
+
+- activeFilter: filtro de consolas seleccionado.
+- error: mensaje de formato incompatible.
+- playing: indica si el modal está abierto.
+- activeFile: archivo elegido.
+- objectUrl: URL local para poder revocarla.
+
+Referencias:
+
+- inputRef para el input de archivo.
+- playerContainerRef si el runtime necesita un nodo directo.
+- scriptRef para retirar el loader al cerrar.
+
+No se necesita backend para la versión inicial.
+
+
+======================================================================
+6. RESPONSIVE
+======================================================================
+
+Escritorio:
+
+- Hero a dos columnas.
+- Tres tarjetas de juegos en una fila.
+- Sistemas en dos columnas.
+- Pasos en tres columnas.
+
+Tableta, aproximadamente <= 900 px:
+
+- Navegación simplificada.
+- Hero principalmente apilado, con arte de fondo a la derecha.
+- Tarjetas de juegos en una columna.
+- Sistemas en una columna.
+- Pasos en una columna.
+
+Móvil, aproximadamente <= 560 px:
+
+- Padding lateral de 20 px.
+- Titular principal de unos 64 px, ajustable con clamp.
+- CTAs apilados.
+- Arte del portal reposicionado para no cubrir el texto.
+- Filtros con scroll horizontal.
+- Modal del emulador ocupando casi toda la pantalla.
+
+
+======================================================================
+7. ACCESIBILIDAD
+======================================================================
+
+- HTML lang="es".
+- Contraste suficiente entre crema, verde y fondos oscuros.
+- No usar únicamente color para comunicar selección o error.
+- Todos los botones deben ser elementos button reales.
+- Enlaces externos con target="_blank" y rel="noreferrer".
+- Estados de foco visibles.
+- Imágenes decorativas con alt="" o aria-hidden="true".
+- Mensajes de error asociados a aria-live="polite".
+- Modal con bloqueo de scroll, captura de foco, retorno de foco y cierre con
+  Escape.
+- prefers-reduced-motion para desactivar animaciones.
+- Controles utilizables por teclado.
+
+
+======================================================================
+8. PRIVACIDAD, SEGURIDAD Y LEGALIDAD
+======================================================================
+
+Reglas obligatorias:
+
+- No subir archivos del usuario.
+- No analizar la ROM en un servidor.
+- No registrar nombres de archivos en analítica.
+- No distribuir ROMs, BIOS, firmware, claves ni copias comerciales.
+- No mostrar enlaces a descargas no autorizadas.
+- Usar únicamente artes originales, abstractos o material con licencia
+  comprobada.
+- Añadir una nota visible: “Usa únicamente copias que poseas legalmente”.
+- Publicar licencias de las dependencias si el proyecto se distribuye.
+- Revisar la licencia y política de uso de EmulatorJS antes de producción.
+- Aplicar una Content Security Policy compatible con el CDN elegido.
+- Preferiblemente autoalojar las dependencias del emulador para fijar versiones,
+  mejorar privacidad y evitar roturas del CDN.
+- Fijar versiones; no depender permanentemente de una ruta “stable” mutable.
+
+La aplicación no debe presentarse como afiliada a Nintendo, Sony, id Software,
+OpenArena, Freedoom ni a fabricantes de consolas.
+
+
+======================================================================
+9. JUEGOS ABIERTOS QUE PODRÍAN FUNCIONAR BIEN
+======================================================================
+
+Buenos candidatos, sujetos a crear o conseguir una compilación web autorizada:
+
+- Freedoom con un motor Doom compilado a WebAssembly.
+- OpenArena, si se prepara una adaptación WebAssembly/WebGL adecuada.
+- QuakeSpasm o motores Quake abiertos con datos libres compatibles.
+- OpenTTD, que ya tiene ecosistema abierto y puede adaptarse al navegador.
+- The Battle for Wesnoth, dependiendo del port web disponible.
+- Freeciv-web.
+- Juegos creados específicamente con Godot exportados a HTML5.
+- Juegos SDL libres compilados con Emscripten.
+
+Separar claramente:
+
+- Código del motor, que puede ser abierto.
+- Datos gráficos, mapas, música y niveles, cuya licencia puede ser distinta.
+
+Que un motor sea código abierto no autoriza a distribuir los recursos del juego
+comercial original.
+
+
+======================================================================
+10. RENDIMIENTO
+======================================================================
+
+- Carga diferida del emulador.
+- No cargar todos los núcleos en el primer render.
+- Minimizar el peso de imágenes y servir AVIF/WebP cuando sea posible.
+- Reservar dimensiones para evitar layout shift.
+- Precargar solo la tipografía crítica.
+- Evitar filtros CSS pesados en móvil.
+- Liberar Object URLs y memoria al cerrar el juego.
+- Suspender o destruir el núcleo al ocultar el modal.
+- Probar ROMs grandes y dispositivos de memoria limitada.
+- Mostrar estado de carga del núcleo.
+- Mostrar error recuperable si WebAssembly, WebGL o SharedArrayBuffer no están
+  disponibles.
+
+
+======================================================================
+11. MEJORAS RECOMENDADAS PARA UNA SEGUNDA VERSIÓN
+======================================================================
+
+- Guardados locales en IndexedDB.
+- Importar/exportar archivos de guardado.
+- Mapeo editable de teclado y gamepad.
+- Gamepad API.
+- Pantalla completa.
+- Favoritos guardados localmente.
+- Historial local sin enviar nombres al servidor.
+- PWA instalable y modo offline para núcleos ya descargados.
+- Autoalojamiento de EmulatorJS y sus cores.
+- Soporte sólido para juegos multidisco de PS1.
+- Página individual para cada proyecto abierto con créditos y licencia.
+- Diagnóstico de compatibilidad del navegador.
+- Selector de idioma.
+
+No añadir sincronización en la nube de ROMs sin un diseño legal, de privacidad
+y consentimiento completamente separado.
+
+
+======================================================================
+12. CRITERIOS DE ACEPTACIÓN
+======================================================================
+
+Diseño:
+
+[ ] La página coincide con la estética carbón + crema + verde eléctrico.
+[ ] El hero es legible en escritorio y móvil.
+[ ] No aparecen marcas ni capturas protegidas.
+[ ] Los efectos no perjudican rendimiento ni accesibilidad.
+
+Catálogo:
+
+[ ] OpenArena y Freedoom apuntan a sus sitios oficiales.
+[ ] No se presentan como jugables si solo son enlaces informativos.
+[ ] Los filtros de consolas funcionan.
+
+Archivos:
+
+[ ] Todos los CTAs relevantes abren el selector.
+[ ] Las extensiones admitidas detectan el core correcto.
+[ ] Las extensiones inválidas muestran un error claro.
+[ ] La ROM permanece local.
+[ ] La Object URL se revoca al cerrar o sustituir el juego.
+
+Reproductor:
+
+[ ] El modal se abre y cierra correctamente.
+[ ] Escape cierra el modal.
+[ ] El foco queda atrapado y vuelve al CTA original.
+[ ] Existe estado de carga.
+[ ] Los fallos del CDN/core muestran un mensaje recuperable.
+[ ] Se probó al menos una ROM legal/homebrew por sistema anunciado.
+
+Calidad:
+
+[ ] TypeScript compila sin errores.
+[ ] La compilación de producción termina correctamente.
+[ ] No hay errores en consola durante navegación normal.
+[ ] Se probó teclado, móvil y gamepad cuando aplique.
+[ ] Lighthouse no detecta problemas críticos de accesibilidad.
+[ ] La aplicación incluye nota legal y atribuciones.
+
+
+======================================================================
+13. PRUEBAS PROPUESTAS
+======================================================================
+
+Pruebas unitarias:
+
+- Mapeo de extensión a núcleo.
+- Normalización de mayúsculas/minúsculas.
+- Archivo sin extensión.
+- Extensión desconocida.
+- Filtrado de sistemas.
+
+Pruebas de interfaz:
+
+- Todos los CTA activan el input.
+- Cancelar el selector no abre el modal.
+- Archivo incompatible muestra error.
+- Abrir y cerrar modal limpia recursos.
+- Cambiar filtros actualiza las tarjetas.
+- Navegación por teclado.
+
+Pruebas manuales:
+
+- Chrome, Firefox, Safari y Edge recientes.
+- Android y iOS.
+- Pantallas de 360 px, 768 px, 1440 px y ultrawide.
+- ROMs homebrew pequeñas y grandes.
+- Sin conexión después de cachear recursos, si se implementa PWA.
+- Navegador sin WebGL/WebAssembly.
+- prefers-reduced-motion activado.
+
+
+======================================================================
+14. PROMPT LISTO PARA OTRA IA
+======================================================================
+
+Construye “NEXO ARCADE”, una aplicación web responsive en español para descubrir
+juegos de código abierto y ejecutar localmente ROMs retro que el usuario posea
+legalmente. Usa React + TypeScript con Next.js App Router o Vite si el hosting
+requiere salida dist.
+
+La identidad debe ser de consola moderna/editorial: fondo #171814, paneles
+#22231E, texto crema #F4F0E6, verde eléctrico #B8FF3D, secundarios #A7AA9A y
+bordes #3B3D34. Usa Space Grotesk, titulares enormes con tracking negativo,
+tarjetas de 18 px y animaciones sutiles respetando prefers-reduced-motion.
+
+Implementa:
+
+1. Navegación con Juegos, Emuladores, Cómo funciona y “Abrir biblioteca”.
+2. Hero con “Juega sin instalar.”, dos CTA y un portal abstracto verde.
+3. Tres tarjetas: OpenArena, Freedoom y Retro Library.
+4. Catálogo filtrable de NES, SNES, GB/GBC, GBA, NDS opcional, N64 y PS1.
+5. Selector local de archivos y detección automática de core por extensión.
+6. Integración diferida con EmulatorJS o alternativa libre.
+7. Modal accesible de juego con carga, error, cierre, Escape y limpieza de
+   Object URLs.
+8. Sección de tres pasos, pie de página, nota legal y atribuciones.
+
+No construyas backend para subir ROMs. No distribuyas ROMs, BIOS, firmware,
+claves ni contenido protegido. No implementes Switch en esta versión. Los
+enlaces de OpenArena y Freedoom deben apuntar a sus sitios oficiales, sin afirmar
+que están integrados si no existe una compilación web funcional.
+
+Antes de finalizar:
+
+- Ejecuta compilación de producción.
+- Prueba todos los filtros y CTA.
+- Prueba extensiones válidas e inválidas.
+- Verifica accesibilidad, responsive y limpieza de recursos.
+- Documenta instalación, ejecución, compilación, licencias y limitaciones.
+
+
+======================================================================
+15. RESULTADO ESPERADO
+======================================================================
+
+Entregar:
+
+- Código fuente completo.
+- README con instalación y despliegue.
+- Archivo de licencias/atribuciones.
+- Diseño responsive.
+- Integración local del emulador.
+- Pruebas básicas.
+- Sin archivos ni enlaces de contenido comercial protegido.
+
+La meta no es copiar visualmente hl2.slqnt.dev. La meta es reproducir el concepto
+técnico de ejecutar software/juegos en el navegador, con una identidad original,
+una experiencia clara y un enfoque legal y seguro.
+
