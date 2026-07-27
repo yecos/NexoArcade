@@ -15,6 +15,7 @@ servidor.
 - **Tipografía**: Space Grotesk (Google Fonts)
 - **Estado**: Zustand
 - **Emulador**: EmulatorJS (cargado bajo demanda desde CDN)
+- **Mandos**: Gamepad API nativa + `EJS_gamepad = true`
 
 ## Estructura
 
@@ -33,8 +34,11 @@ src/
       how-it-works.tsx   # Sección de 3 pasos
       footer.tsx         # Pie con enlaces oficiales
       file-picker.tsx    # Input de archivo único
-      emulator-modal.tsx # Modal accesible con EmulatorJS
+      emulator-modal.tsx # Modal accesible con EmulatorJS + indicador de mando
       error-banner.tsx   # Banda de error accesible (aria-live)
+      external-resources.tsx # Enlaces a recursos externos (Emu-Land, etc.)
+  hooks/
+    use-gamepad.ts      # Hook de detección de mandos (Gamepad API)
   lib/
     nexo/
       emulator-config.ts # Mapeo extensión → core + metadatos
@@ -88,6 +92,45 @@ bun run lint     # ESLint
 | Nintendo DS (opcional) | `nds` | `.nds` |
 | Nintendo 64 | `n64` | `.n64`, `.z64`, `.v64` |
 | PlayStation | `psx` | `.bin`, `.iso`, `.chd` |
+
+## Soporte para mandos (Gamepad API)
+
+NEXO ARCADE detecta automáticamente cualquier mando conectado por USB o
+Bluetooth usando la [Gamepad API](https://developer.mozilla.org/docs/Web/API/Gamepad_API)
+del navegador. EmulatorJS activa el mapeo interno con `EJS_gamepad = true`.
+
+Compatibilidad probada:
+- Xbox One / Series (USB y Bluetooth)
+- DualShock 4 (PS4)
+- DualSense (PS5)
+- 8BitDo Pro 2 / SN30
+- Switch Pro Controller
+- Mandos genéricos
+
+Para conectar un mando:
+1. Conéctalo por USB o emparéjalo por Bluetooth en tu sistema operativo.
+2. Pulsa cualquier botón del mando (los navegadores requieren un gesto del
+   usuario para activar la detección).
+3. El indicador en la barra superior del modal mostrará el nombre del mando
+   y se iluminará en verde al recibir input.
+
+El indicador es solo informativo; el mapeo de botones lo gestiona EmulatorJS
+a través de su menú de opciones (icono de mando dentro del reproductor).
+
+## Recursos externos
+
+La sección "Recursos" enlaza a sitios externos donde el usuario puede
+encontrar ROMs y emuladores. NEXO ARCADE no controla ni aloja ese contenido.
+Los enlaces actuales:
+
+- **Emu-Land** — https://www.emu-land.net/ — Catálogo ruso de emuladores y ROMs.
+- **EmulatorJS** — https://emulatorjs.org/ — Motor que usamos.
+- **Homebrew Hub** — https://hh.beyondbubble.io/ — Juegos homebrew legales.
+- **Internet Archive** — https://archive.org/details/softwarelibrary — Software preservado.
+
+> ⚠️ **Aviso**: descargar ROMs de juegos comerciales sin permiso del titular
+> puede ser ilegal en tu jurisdicción. NEXO ARCADE facilita solo la ejecución
+> local de archivos que ya poseas legalmente.
 
 ## Legal y privacidad
 

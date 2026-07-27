@@ -32,6 +32,7 @@ export function Footer() {
               {[
                 { href: "#juegos", label: "Juegos" },
                 { href: "#emuladores", label: "Emuladores" },
+                { href: "#recursos", label: "Recursos" },
                 { href: "#como-funciona", label: "Cómo funciona" },
               ].map((link) => (
                 <li key={link.href}>

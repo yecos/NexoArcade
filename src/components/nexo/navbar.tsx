@@ -6,6 +6,7 @@ import { useNexoStore } from "@/store/nexo-store";
 const NAV_LINKS = [
   { href: "#juegos", label: "Juegos" },
   { href: "#emuladores", label: "Emuladores" },
+  { href: "#recursos", label: "Recursos" },
   { href: "#como-funciona", label: "Cómo funciona" },
 ];
 

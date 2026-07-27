@@ -4,6 +4,7 @@ import { Navbar } from "@/components/nexo/navbar";
 import { Hero } from "@/components/nexo/hero";
 import { Selection } from "@/components/nexo/selection";
 import { Emulators } from "@/components/nexo/emulators";
+import { ExternalResources } from "@/components/nexo/external-resources";
 import { HowItWorks } from "@/components/nexo/how-it-works";
 import { Footer } from "@/components/nexo/footer";
 import { FilePicker } from "@/components/nexo/file-picker";
@@ -18,6 +19,7 @@ export default function Home() {
       <Hero />
       <Selection />
       <Emulators />
+      <ExternalResources />
       <HowItWorks />
       <Footer />
 
@@ -27,3 +29,4 @@ export default function Home() {
     </main>
   );
 }
+
