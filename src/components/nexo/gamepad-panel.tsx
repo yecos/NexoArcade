@@ -31,17 +31,15 @@ interface GamepadPanelProps {
  * - Muestra si la Gamepad API es soportada por el navegador.
  * - Lista todos los mandos conectados con su marca.
  * - Visualiza los botones pulsados y los ejes analógicos en tiempo real.
- *
- * Útil para que el usuario verifique que su mando funciona antes de
- * abrir un juego, y como feedback dentro del modal del emulador.
+ * - Incluye un botón "Detectar mando" que fuerza la re-lectura.
+ * - Muestra diagnóstico completo (navegador, SO, contexto seguro).
  */
 export function GamepadPanel({
   variant = "full",
   intervalMs,
 }: GamepadPanelProps) {
-  // Polling más rápido cuando el panel está visible para feedback fluido
   const pollInterval = intervalMs ?? (variant === "full" ? 60 : 100);
-  const { gamepads, supported, hasConnected } = useGamepad({
+  const { gamepads, supported, hasConnected, diagnostics, forceScan } = useGamepad({
     intervalMs: pollInterval,
   });
 
@@ -49,10 +47,33 @@ export function GamepadPanel({
   if (!supported) {
     if (variant === "compact") return null;
     return (
-      <div className="p-4 rounded-xl border border-nexo-border bg-nexo-surface/50">
+      <div className="p-5 rounded-xl border border-nexo-border bg-nexo-surface/50">
+        <p className="text-sm text-nexo-cream font-medium mb-2">
+          Navegador no compatible
+        </p>
         <p className="text-sm text-nexo-muted">
-          Tu navegador no soporta la Gamepad API. Prueba con Chrome, Firefox
-          o Edge reciente en escritorio o Android.
+          Tu navegador (<code className="text-nexo-cream">{diagnostics.browser}</code>) no soporta la Gamepad API.
+          Prueba con Chrome, Firefox o Edge reciente en escritorio o Android.
+          Safari tiene soporte limitado.
+        </p>
+      </div>
+    );
+  }
+
+  // Contexto inseguro — la API no funcionará
+  if (!diagnostics.secureContext && variant === "full") {
+    return (
+      <div className="p-5 rounded-xl border border-nexo-green/40 bg-nexo-green/5">
+        <p className="text-sm text-nexo-cream font-medium mb-2">
+          ⚠ Contexto no seguro
+        </p>
+        <p className="text-sm text-nexo-muted leading-relaxed">
+          La Gamepad API solo funciona en contextos seguros (HTTPS o localhost).
+          Estás accediendo desde <code className="text-nexo-cream">{typeof window !== "undefined" ? window.location.href : ""}</code>.
+        </p>
+        <p className="text-xs text-nexo-muted mt-2">
+          Si estás en Vercel, deberías estar en HTTPS automáticamente. Si estás
+          en local, usa <code className="text-nexo-cream">http://localhost:3000</code> en lugar de una IP.
         </p>
       </div>
     );
@@ -61,16 +82,18 @@ export function GamepadPanel({
   // Sin mandos — versión compacta discreta
   if (!hasConnected && variant === "compact") {
     return (
-      <span
-        className="hidden sm:inline-flex shrink-0 items-center gap-1.5 px-2 py-1 rounded-md border border-nexo-border text-nexo-muted/60 text-[0.7rem]"
-        title="Conecta un mando por Bluetooth o USB y pulsa un botón"
+      <button
+        type="button"
+        onClick={() => forceScan()}
+        className="hidden sm:inline-flex shrink-0 items-center gap-1.5 px-2 py-1 rounded-md border border-nexo-border text-nexo-muted/60 text-[0.7rem] hover:border-nexo-green hover:text-nexo-green transition-colors"
+        title="Pulsa para detectar el mando. Recuerda pulsar un botón del mando después de conectarlo."
       >
         <span
           aria-hidden="true"
           className="w-1.5 h-1.5 rounded-full bg-nexo-muted/40"
         />
-        Sin mando
-      </span>
+        Sin mando · pulsa para detectar
+      </button>
     );
   }
 
@@ -100,14 +123,102 @@ export function GamepadPanel({
           Ningún mando detectado
         </p>
         <p className="text-nexo-muted text-xs mt-1.5 max-w-xs mx-auto leading-relaxed">
-          Conecta un mando por USB o Bluetooth y pulsa cualquier botón. Los
-          navegadores requieren un gesto del usuario para activar la detección.
+          Conecta un mando por USB o Bluetooth y pulsa cualquier botón del mando.
+          Los navegadores requieren este gesto para activar la detección.
         </p>
+
+        {/* Botón forzar detección */}
+        <button
+          type="button"
+          onClick={() => forceScan()}
+          className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-md bg-nexo-green text-nexo-bg text-sm font-medium hover:brightness-105 transition-all"
+        >
+          <svg
+            aria-hidden="true"
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+          >
+            <path
+              d="M21 12a9 9 0 11-3.5-7.1M21 4v5h-5"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          Detectar mando ahora
+        </button>
+
+        {/* Diagnóstico */}
+        <div className="mt-5 pt-4 border-t border-nexo-border/50 grid grid-cols-2 gap-2 text-left text-[0.7rem]">
+          <DiagnosticRow label="Navegador" value={diagnostics.browser} ok />
+          <DiagnosticRow label="Sistema" value={diagnostics.platform} ok />
+          <DiagnosticRow
+            label="HTTPS"
+            value={diagnostics.secureContext ? "Sí" : "No"}
+            ok={diagnostics.secureContext}
+          />
+          <DiagnosticRow
+            label="API Gamepad"
+            value={diagnostics.apiSupported ? "Disponible" : "No disponible"}
+            ok={diagnostics.apiSupported}
+          />
+          <DiagnosticRow
+            label="Scans"
+            value={String(diagnostics.scanCount)}
+            ok
+          />
+          <DiagnosticRow
+            label="Último scan"
+            value={
+              diagnostics.lastScan
+                ? new Date(diagnostics.lastScan).toLocaleTimeString("es-ES")
+                : "—"
+            }
+            ok
+          />
+        </div>
+
+        {/* Troubleshooting */}
+        <details className="mt-4 text-left">
+          <summary className="text-xs text-nexo-muted cursor-pointer hover:text-nexo-cream transition-colors">
+            ¿No se detecta? Ver estos puntos →
+          </summary>
+          <ul className="mt-2 space-y-1.5 text-xs text-nexo-muted leading-relaxed">
+            <li>
+              • <strong className="text-nexo-cream">Pulsa un botón</strong> del
+              mando después de conectarlo. La detección no es automática.
+            </li>
+            <li>
+              • <strong className="text-nexo-cream">Xbox por Bluetooth</strong>:
+              en Windows, empareja manteniendo el botón Sync hasta que el LED
+              parpadee rápido.
+            </li>
+            <li>
+              • <strong className="text-nexo-cream">DualShock/DualSense</strong>:
+              mantén Share + PS hasta que el LED parpadee para emparejar.
+            </li>
+            <li>
+              • <strong className="text-nexo-cream">USB</strong>: usa cable de
+              datos (no solo carga). Si no se detecta, prueba otro cable.
+            </li>
+            <li>
+              • <strong className="text-nexo-cream">8BitDo</strong>: cámbialo a
+              modo X (XInput) manteniendo X + Start al encenderlo.
+            </li>
+            <li>
+              • Abre la consola del navegador (F12) para ver logs detallados con
+              el prefijo <code className="text-nexo-cream">[NEXO]</code>.
+            </li>
+          </ul>
+        </details>
       </div>
     );
   }
 
-  // Compacto: solo el primer mando, sin ejes visibles
+  // Compacto: solo el primer mando
   if (variant === "compact") {
     const primary = gamepads[0];
     if (!primary) return null;
@@ -159,9 +270,61 @@ export function GamepadPanel({
   // Completo: lista todos los mandos con visualización
   return (
     <div className="space-y-3">
+      {/* Barra de acciones */}
+      <div className="flex items-center justify-between px-3 py-2 rounded-md border border-nexo-border bg-nexo-surface/40">
+        <span className="text-[0.7rem] text-nexo-muted font-mono">
+          Scan #{diagnostics.scanCount} · {diagnostics.browser} · {diagnostics.platform}
+        </span>
+        <button
+          type="button"
+          onClick={() => forceScan()}
+          className="text-[0.7rem] text-nexo-muted hover:text-nexo-green transition-colors inline-flex items-center gap-1"
+        >
+          <svg
+            aria-hidden="true"
+            width="11"
+            height="11"
+            viewBox="0 0 24 24"
+            fill="none"
+          >
+            <path
+              d="M21 12a9 9 0 11-3.5-7.1M21 4v5h-5"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          Re-escanear
+        </button>
+      </div>
+
       {gamepads.map((gp) => (
         <GamepadCard key={gp.index} gamepad={gp} />
       ))}
+    </div>
+  );
+}
+
+function DiagnosticRow({
+  label,
+  value,
+  ok,
+}: {
+  label: string;
+  value: string;
+  ok?: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between px-2 py-1 rounded bg-nexo-bg/40 border border-nexo-border">
+      <span className="text-nexo-muted">{label}</span>
+      <span
+        className={`font-mono ${
+          ok === false ? "text-nexo-green" : "text-nexo-cream"
+        }`}
+      >
+        {value}
+      </span>
     </div>
   );
 }
@@ -222,6 +385,13 @@ function GamepadCard({
         </span>
       </div>
 
+      {/* ID crudo */}
+      <div className="mb-3 px-2 py-1 rounded bg-nexo-bg/60 border border-nexo-border">
+        <p className="text-[0.65rem] text-nexo-muted font-mono truncate" title={gamepad.id}>
+          {gamepad.id}
+        </p>
+      </div>
+
       {/* Especificaciones */}
       <div className="grid grid-cols-2 gap-2 mb-3 text-[0.7rem]">
         <div className="px-2 py-1 rounded bg-nexo-bg/40 border border-nexo-border">
@@ -266,7 +436,6 @@ function GamepadCard({
             Sticks analógicos
           </p>
           <div className="flex flex-wrap gap-3">
-            {/* Agrupamos los ejes de 2 en 2 (cada stick tiene X e Y) */}
             {Array.from({
               length: Math.floor(gamepad.axesValues.length / 2),
             }).map((_, stickIdx) => {
@@ -291,9 +460,6 @@ function GamepadCard({
   );
 }
 
-/**
- * Visualización de un stick analógico como cuadrante con punto movible.
- */
 function StickViz({
   label,
   x,
@@ -305,7 +471,6 @@ function StickViz({
   y: number;
   active: boolean;
 }) {
-  // Mapear [-1, 1] a [0%, 100%] con centro en 50%
   const left = 50 + x * 45;
   const top = 50 + y * 45;
   return (
@@ -317,7 +482,6 @@ function StickViz({
         }}
         aria-label={`Stick ${label}: X=${x.toFixed(2)}, Y=${y.toFixed(2)}`}
       >
-        {/* Cruces centrales */}
         <div
           aria-hidden="true"
           className="absolute left-1/2 top-0 bottom-0 w-px bg-nexo-border/60 -translate-x-1/2"
@@ -326,7 +490,6 @@ function StickViz({
           aria-hidden="true"
           className="absolute top-1/2 left-0 right-0 h-px bg-nexo-border/60 -translate-y-1/2"
         />
-        {/* Punto */}
         <div
           aria-hidden="true"
           className="absolute w-2 h-2 rounded-full -translate-x-1/2 -translate-y-1/2 transition-all duration-75"
