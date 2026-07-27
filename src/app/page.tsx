@@ -5,6 +5,7 @@ import { Hero } from "@/components/nexo/hero";
 import { Selection } from "@/components/nexo/selection";
 import { Emulators } from "@/components/nexo/emulators";
 import { ExternalResources } from "@/components/nexo/external-resources";
+import { GamepadSection } from "@/components/nexo/gamepad-section";
 import { HowItWorks } from "@/components/nexo/how-it-works";
 import { Footer } from "@/components/nexo/footer";
 import { FilePicker } from "@/components/nexo/file-picker";
@@ -19,6 +20,7 @@ export default function Home() {
       <Hero />
       <Selection />
       <Emulators />
+      <GamepadSection />
       <ExternalResources />
       <HowItWorks />
       <Footer />
@@ -29,4 +31,5 @@ export default function Home() {
     </main>
   );
 }
+
 

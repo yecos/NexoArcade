@@ -6,7 +6,7 @@ import {
   EJS_LOADER_URL,
   EJS_PATH_TO_DATA,
 } from "@/lib/nexo/emulator-config";
-import { useGamepad } from "@/hooks/use-gamepad";
+import { GamepadPanel } from "@/components/nexo/gamepad-panel";
 
 /**
  * Comprueba si el navegador soporta las capacidades necesarias para
@@ -62,7 +62,6 @@ export function EmulatorModal() {
   const closeBtnRef = useRef<HTMLButtonElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const supported = useMemo(() => checkBrowserSupport(), []);
-  const { gamepads, supported: gamepadSupported, hasConnected } = useGamepad();
 
   // Cargar EmulatorJS cuando se abre el modal
   useEffect(() => {
@@ -258,7 +257,7 @@ export function EmulatorModal() {
       {/* Contenedor del juego */}
       <div
         ref={containerRef}
-        className="relative w-full max-w-[1100px] max-h-[720px] aspect-[1100/720] bg-nexo-bg border border-nexo-border rounded-2xl overflow-hidden flex flex-col"
+        className="relative w-full max-w-[1100px] h-[calc(100vh-3rem)] max-h-[720px] bg-nexo-bg border border-nexo-border rounded-2xl overflow-hidden flex flex-col"
       >
         {/* Barra superior */}
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-nexo-border bg-nexo-surface/50 gap-3">
@@ -281,12 +280,8 @@ export function EmulatorModal() {
                 {activeFileName}
               </p>
             </div>
-            {/* Indicador de mando */}
-            <GamepadIndicator
-              supported={gamepadSupported}
-              hasConnected={hasConnected}
-              gamepads={gamepads}
-            />
+            {/* Indicador de mando — visible en todas las resoluciones */}
+            <GamepadPanel variant="compact" intervalMs={80} />
           </div>
           <button
             ref={closeBtnRef}
@@ -363,72 +358,6 @@ export function EmulatorModal() {
         </div>
       </div>
     </div>
-  );
-}
-
-/**
- * Indicador visual del estado del mando en la barra superior del modal.
- *
- * Estados:
- * - No soportado: oculto
- * - Soportado, sin mando: badge gris "Sin mando"
- * - Soportado, con mando inactivo: badge verde con nombre del mando
- * - Soportado, con mando activo: badge verde brillante + icono de gamepad
- */
-function GamepadIndicator({
-  supported,
-  hasConnected,
-  gamepads,
-}: {
-  supported: boolean;
-  hasConnected: boolean;
-  gamepads: ReturnType<typeof useGamepad>["gamepads"];
-}) {
-  if (!supported) return null;
-
-  if (!hasConnected) {
-    return (
-      <span
-        className="hidden md:inline-flex shrink-0 items-center gap-1.5 px-2 py-1 rounded-md border border-nexo-border text-nexo-muted/60 text-[0.7rem]"
-        title="Conecta un mando por Bluetooth o USB y pulsa un botón"
-      >
-        <span aria-hidden="true" className="w-1.5 h-1.5 rounded-full bg-nexo-muted/40" />
-        Sin mando
-      </span>
-    );
-  }
-
-  const primary = gamepads[0];
-  if (!primary) return null;
-
-  return (
-    <span
-      className={`hidden md:inline-flex shrink-0 items-center gap-1.5 px-2 py-1 rounded-md border text-[0.7rem] transition-all ${
-        primary.active
-          ? "border-nexo-green text-nexo-green bg-nexo-green/10"
-          : "border-nexo-border text-nexo-muted"
-      }`}
-      title={`${primary.label} · ${primary.buttons} botones · ${primary.axes} ejes`}
-      aria-live="polite"
-    >
-      <svg
-        aria-hidden="true"
-        width="12"
-        height="12"
-        viewBox="0 0 24 24"
-        fill="none"
-        className={primary.active ? "animate-pulse" : ""}
-      >
-        <path
-          d="M6 11h4M8 9v4M15 10h.01M18 12h.01M2 12c0-3.5 2-5 4-5h12c2 0 4 1.5 4 5s-1 6-3 6-2-2-4-2H7c-2 0-2 2-4 2s-3-2.5-3-6z"
-          stroke="currentColor"
-          strokeWidth="1.6"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-      <span className="max-w-[80px] truncate">{primary.label}</span>
-    </span>
   );
 }
 
