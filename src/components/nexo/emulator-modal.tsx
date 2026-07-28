@@ -71,63 +71,112 @@ function buildEmulatorHTML(params: {
   // Parche 1: navigator.getGamepads()
   // EmulatorJS itera el resultado sin filtrar nulls, causando
   // "Cannot read properties of undefined (reading 'id')" cuando
-  // algún slot está vacío (los navegadores devuelven 4 slots fijos).
-  // Devolvemos un array limpio sin nulls.
+  // algún slot está vacío. Devolvemos SOLO gamepads reales.
+  //
+  // Usamos Object.defineProperty porque la asignación simple
+  // (navigator.getGamepads = ...) no sobrescribe métodos del prototipo
+  // en algunos navegadores.
   (function() {
-    var originalGetGamepads = navigator.getGamepads ? navigator.getGamepads.bind(navigator) : null;
-    if (!originalGetGamepads) return;
-    navigator.getGamepads = function() {
+    var original = null;
+    try {
+      original = navigator.getGamepads ? navigator.getGamepads.bind(navigator) : null;
+    } catch (e) { original = null; }
+    if (!original) return;
+
+    var patched = function() {
       try {
-        var all = originalGetGamepads() || [];
+        var all = original() || [];
         var result = [];
         for (var i = 0; i < all.length; i++) {
-          if (all[i]) result.push(all[i]);
+          var gp = all[i];
+          // Solo incluir gamepads reales con propiedad id
+          if (gp && typeof gp === 'object' && gp.id !== undefined) {
+            result.push(gp);
+          }
         }
-        // Mantener la longitud esperada rellenando con null al final
-        // para no romper código que itera por índice
-        while (result.length < 4) result.push(null);
         return result;
       } catch (e) {
-        return [null, null, null, null];
+        return [];
       }
     };
+
+    // Override en la instancia
+    try {
+      Object.defineProperty(navigator, 'getGamepads', {
+        value: patched,
+        configurable: true,
+        writable: true
+      });
+    } catch (e) {}
+
+    // Override en el prototipo (por si EmulatorJS accede vía Navigator.prototype)
+    try {
+      Object.defineProperty(Navigator.prototype, 'getGamepads', {
+        value: patched,
+        configurable: true,
+        writable: true
+      });
+    } catch (e) {}
+
+    console.info('[NEXO-iframe] Parche navigator.getGamepads instalado');
   })();
 
   // Parche 2: document.exitFullscreen()
   // EmulatorJS llama a exitFullscreen al cerrar, pero el documento
   // del iframe ya está inactivo → TypeError "Document not active".
-  // Capturamos el error silenciosamente.
   (function() {
-    var originalExit = document.exitFullscreen ? document.exitFullscreen.bind(document) : null;
-    if (!originalExit) return;
-    document.exitFullscreen = function() {
+    var original = null;
+    try {
+      original = document.exitFullscreen ? document.exitFullscreen.bind(document) : null;
+    } catch (e) { original = null; }
+    if (!original) return;
+
+    var patched = function() {
       try {
-        var promise = originalExit();
+        var promise = original();
         if (promise && typeof promise.catch === 'function') {
-          promise.catch(function() { /* noop — iframe cerrándose */ });
+          promise.catch(function() { /* noop */ });
         }
         return promise;
       } catch (e) {
-        // Document not active — ignorar silenciosamente
         return Promise.resolve();
       }
     };
+
+    try {
+      Object.defineProperty(document, 'exitFullscreen', {
+        value: patched,
+        configurable: true,
+        writable: true
+      });
+    } catch (e) {}
+
+    try {
+      Object.defineProperty(Document.prototype, 'exitFullscreen', {
+        value: patched,
+        configurable: true,
+        writable: true
+      });
+    } catch (e) {}
+
+    console.info('[NEXO-iframe] Parche document.exitFullscreen instalado');
   })();
 
-  // Parche 3: Capturar errores globales no críticos de EmulatorJS
-  // Algunos errores internos de emulator.min.js no afectan al
-  // funcionamiento pero ensucian la consola.
+  // Parche 3: Capturar errores globales no críticos de EmulatorJS.
+  // Usamos capture phase para interceptar antes de que se propaguen.
   var suppressPatterns = [
     "Cannot read properties of undefined (reading 'id')",
+    "Cannot read properties of null (reading 'id')",
     "exitFullscreen",
     "Document not active"
   ];
   window.addEventListener('error', function(e) {
-    var msg = e.message || '';
+    var msg = (e && e.message) || '';
     for (var i = 0; i < suppressPatterns.length; i++) {
       if (msg.indexOf(suppressPatterns[i]) !== -1) {
         e.preventDefault();
         e.stopPropagation();
+        e.stopImmediatePropagation && e.stopImmediatePropagation();
         return false;
       }
     }
@@ -135,7 +184,7 @@ function buildEmulatorHTML(params: {
 
   // Parche 4: Capturar promesas rechazadas no críticas
   window.addEventListener('unhandledrejection', function(e) {
-    var msg = (e.reason && e.reason.message) || '';
+    var msg = (e.reason && e.reason.message) || String(e.reason || '');
     for (var i = 0; i < suppressPatterns.length; i++) {
       if (msg.indexOf(suppressPatterns[i]) !== -1) {
         e.preventDefault();
@@ -143,6 +192,36 @@ function buildEmulatorHTML(params: {
       }
     }
   });
+
+  // Parche 5: Parchear Function.prototype.call/apply NO es viable,
+  // pero podemos sobreescribir setTimeout para envolver callbacks que
+  // pudieran lanzar errores de gamepad. Esto es agresivo pero efectivo.
+  (function() {
+    var originalSetTimeout = window.setTimeout;
+    window.setTimeout = function(fn, delay) {
+      var args = Array.prototype.slice.call(arguments, 2);
+      var wrapped = function() {
+        try {
+          if (typeof fn === 'function') {
+            return fn.apply(this, args);
+          } else if (typeof fn === 'string') {
+            return eval(fn);
+          }
+        } catch (e) {
+          var msg = e.message || '';
+          for (var i = 0; i < suppressPatterns.length; i++) {
+            if (msg.indexOf(suppressPatterns[i]) !== -1) {
+              return; // suprimir
+            }
+          }
+          // Re-lanzar si no es un error suprimible
+          throw e;
+        }
+      };
+      return originalSetTimeout.call(window, wrapped, delay);
+    };
+    console.info('[NEXO-iframe] Parche setTimeout instalado');
+  })();
 
   // ============================================================
   // CONFIGURACIÓN DE EMULATORJS
@@ -159,7 +238,6 @@ function buildEmulatorHTML(params: {
   window.EJS_backgroundColor = '#171814';
   window.EJS_onGameStart = function() {
     parent.postMessage({ type: 'started', source: 'nexo-emulator' }, '*');
-    // Auto-focar el canvas
     setTimeout(function() {
       var canvas = document.querySelector('#game canvas');
       if (canvas) {
