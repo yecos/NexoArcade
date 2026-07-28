@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNexoStore } from "@/store/nexo-store";
 import {
   EJS_LOADER_URL,
@@ -62,6 +62,106 @@ export function EmulatorModal() {
   const closeBtnRef = useRef<HTMLButtonElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const supported = useMemo(() => checkBrowserSupport(), []);
+  const [showHelp, setShowHelp] = useState(false);
+  const [restartStatus, setRestartStatus] = useState<
+    "idle" | "ok" | "failed"
+  >("idle");
+
+  /**
+   * Reinicia el core de EmulatorJS. Útil cuando el usuario conecta el
+   * mando después de que el juego haya cargado — algunos cores no
+   * detectan el gamepad a mitad de partida.
+   */
+  const restartCore = () => {
+    const w = window as unknown as {
+      EJS_emulator?: {
+        restart?: () => void;
+        toggleGamepad?: (n: number) => void;
+        checkGamepadInputs?: () => void;
+        toggleVirtualGamepad?: () => void;
+        Module?: {
+          _system_restart?: () => void;
+          _toggleMainLoop?: () => void;
+        };
+      };
+    };
+    const emu = w.EJS_emulator;
+    if (!emu) {
+      console.warn("[NEXO] EJS_emulator no disponible");
+      return;
+    }
+
+    let restarted = false;
+    // Método 1: restart directo (algunas versiones)
+    if (typeof emu.restart === "function") {
+      try {
+        emu.restart();
+        restarted = true;
+        console.info("[NEXO] Core reiniciado vía emu.restart()");
+      } catch (e) {
+        console.warn("[NEXO] Error en emu.restart():", e);
+      }
+    }
+    // Método 2: _system_restart del módulo WASM
+    if (!restarted && emu.Module?._system_restart) {
+      try {
+        emu.Module._system_restart();
+        restarted = true;
+        console.info("[NEXO] Core reiniciado vía Module._system_restart()");
+      } catch (e) {
+        console.warn("[NEXO] Error en _system_restart():", e);
+      }
+    }
+
+    // Si no se pudo reiniciar, al menos forzamos detección de gamepad
+    if (!restarted) {
+      console.warn(
+        "[NEXO] No se encontró método de reinicio. Forzando solo detección de gamepad.",
+      );
+      setRestartStatus("failed");
+      setTimeout(() => setRestartStatus("idle"), 4000);
+    } else {
+      setRestartStatus("ok");
+      setTimeout(() => setRestartStatus("idle"), 2000);
+    }
+
+    // Re-forzar detección de gamepad (siempre, también si el reinicio falló)
+    setTimeout(() => {
+      try {
+        if (typeof emu.checkGamepadInputs === "function") {
+          emu.checkGamepadInputs();
+          console.info("[NEXO] checkGamepadInputs() invocado");
+        }
+      } catch (e) {
+        console.warn("[NEXO] Error en checkGamepadInputs():", e);
+      }
+      // Re-focar el canvas
+      const canvas = document.querySelector<HTMLCanvasElement>(
+        "#game canvas",
+      );
+      if (canvas) {
+        canvas.focus();
+        console.info("[NEXO] Canvas re-focado tras reinicio");
+      }
+    }, 500);
+  };
+
+  /**
+   * Pulsa el botón de "pantalla completa" de EmulatorJS si está disponible.
+   */
+  const toggleFullscreen = () => {
+    const w = window as unknown as {
+      EJS_emulator?: { toggleFullscreen?: () => void };
+    };
+    const emu = w.EJS_emulator;
+    if (emu && typeof emu.toggleFullscreen === "function") {
+      try {
+        emu.toggleFullscreen();
+      } catch (e) {
+        console.warn("[NEXO] Error al activar pantalla completa:", e);
+      }
+    }
+  };
 
   // Cargar EmulatorJS cuando se abre el modal
   useEffect(() => {
@@ -108,8 +208,47 @@ export function EmulatorModal() {
     w.EJS_startOnLoaded = true;
     // Activar soporte nativo de mandos (Gamepad API) en EmulatorJS
     w.EJS_gamepad = true;
+    // Modelo de gamepad por defecto (1 = estándar Xbox/layout)
+    w.EJS_gamepadModel = 1;
+    // Mostrar el botón de pantalla completa
+    w.EJS_fullscreenOnLoaded = false;
+    // Color del tema para que combine con NEXO
+    w.EJS_color = "#B8FF3D";
+    w.EJS_backgroundColor = "#171814";
     w.EJS_onGameStart = () => {
       markRunning();
+      // Auto-focus del canvas para que reciba input del teclado y mando
+      setTimeout(() => {
+        const canvas = document.querySelector<HTMLCanvasElement>(
+          "#game canvas",
+        );
+        if (canvas) {
+          canvas.setAttribute("tabindex", "0");
+          canvas.focus();
+          console.info("[NEXO] Canvas auto-focado para recibir input");
+        }
+        // Forzar verificación de gamepad en EmulatorJS
+        const emu = (w as unknown as {
+          EJS_emulator?: {
+            checkGamepadInputs?: () => void;
+          };
+        }).EJS_emulator;
+        if (emu && typeof emu.checkGamepadInputs === "function") {
+          try {
+            emu.checkGamepadInputs();
+            console.info("[NEXO] checkGamepadInputs() invocado al iniciar");
+          } catch (e) {
+            console.warn("[NEXO] Error en checkGamepadInputs:", e);
+          }
+        }
+        // Log de métodos disponibles para depuración
+        if (emu) {
+          const methods = Object.keys(emu).filter(
+            (k) => typeof (emu as unknown as Record<string, unknown>)[k] === "function",
+          );
+          console.info("[NEXO] Métodos de EJS_emulator disponibles:", methods);
+        }
+      }, 500);
     };
 
     // Crear el div #game dentro del contenedor
@@ -283,6 +422,77 @@ export function EmulatorModal() {
             {/* Indicador de mando — visible en todas las resoluciones */}
             <GamepadPanel variant="compact" intervalMs={80} />
           </div>
+          {/* Controles adicionales — solo cuando el juego está corriendo */}
+          {status === "running" && (
+            <div className="shrink-0 flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setShowHelp(true)}
+                className="hidden sm:inline-flex items-center gap-1 px-2 py-1.5 rounded-md border border-nexo-border text-nexo-muted text-xs hover:border-nexo-green hover:text-nexo-green transition-colors"
+                aria-label="Ayuda para configurar el mando"
+                title="¿Mando no funciona en el juego?"
+              >
+                <svg
+                  aria-hidden="true"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                >
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.6" />
+                  <path d="M9.5 9a2.5 2.5 0 015 0c0 2-2.5 2-2.5 4M12 17h.01" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                </svg>
+                <span className="hidden md:inline">Ayuda</span>
+              </button>
+              <button
+                type="button"
+                onClick={restartCore}
+                className={`hidden sm:inline-flex items-center gap-1 px-2 py-1.5 rounded-md border text-xs transition-colors ${
+                  restartStatus === "ok"
+                    ? "border-nexo-green text-nexo-green bg-nexo-green/10"
+                    : restartStatus === "failed"
+                      ? "border-nexo-green/50 text-nexo-green/70"
+                      : "border-nexo-border text-nexo-muted hover:border-nexo-green hover:text-nexo-green"
+                }`}
+                aria-label="Reiniciar el núcleo del emulador"
+                title="Reiniciar core (útil si conectaste el mando después de abrir el juego)"
+              >
+                <svg
+                  aria-hidden="true"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                >
+                  <path d="M21 12a9 9 0 11-3.5-7.1M21 4v5h-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                <span className="hidden md:inline">
+                  {restartStatus === "ok"
+                    ? "¡Gamepad listo!"
+                    : restartStatus === "failed"
+                      ? "Fuerza detección"
+                      : "Reiniciar"}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={toggleFullscreen}
+                className="hidden sm:inline-flex items-center gap-1 px-2 py-1.5 rounded-md border border-nexo-border text-nexo-muted text-xs hover:border-nexo-green hover:text-nexo-green transition-colors"
+                aria-label="Pantalla completa"
+                title="Pantalla completa"
+              >
+                <svg
+                  aria-hidden="true"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                >
+                  <path d="M3 9V3h6M21 9V3h-6M3 15v6h6M21 15v6h-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            </div>
+          )}
           <button
             ref={closeBtnRef}
             type="button"
@@ -355,9 +565,180 @@ export function EmulatorModal() {
               </button>
             </div>
           )}
+
+          {/* Overlay de ayuda para configurar el mando */}
+          {showHelp && (
+            <HelpOverlay
+              onClose={() => setShowHelp(false)}
+              onRestart={restartCore}
+            />
+          )}
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Overlay con instrucciones paso a paso para que el mando funcione
+ * dentro del juego de EmulatorJS.
+ */
+function HelpOverlay({
+  onClose,
+  onRestart,
+}: {
+  onClose: () => void;
+  onRestart: () => void;
+}) {
+  return (
+    <div
+      className="absolute inset-0 z-10 bg-nexo-bg/95 backdrop-blur-sm overflow-y-auto nexo-scroll-y"
+      role="dialog"
+      aria-label="Ayuda para configurar el mando"
+    >
+      <div className="min-h-full flex items-start justify-center p-4 sm:p-6">
+        <div className="w-full max-w-lg my-4">
+          {/* Cabecera */}
+          <div className="flex items-center justify-between mb-5">
+            <h3 className="nexo-display text-nexo-cream text-xl">
+              ¿Mando no funciona?
+            </h3>
+            <button
+              type="button"
+              onClick={onClose}
+              className="shrink-0 w-8 h-8 rounded-md border border-nexo-border text-nexo-muted hover:border-nexo-green hover:text-nexo-green transition-colors flex items-center justify-center"
+              aria-label="Cerrar la ayuda"
+            >
+              ×
+            </button>
+          </div>
+
+          {/* Pasos */}
+          <ol className="space-y-3 mb-5">
+            <HelpStep
+              num={1}
+              title="Pulsa un botón del mando"
+              body="EmulatorJS solo detecta el mando cuando pulsas un botón físico. Conéctalo y pulsa A, B o cualquier botón."
+            />
+            <HelpStep
+              num={2}
+              title="Haz clic en la pantalla del juego"
+              body="El canvas necesita foco para recibir input. Haz clic una vez sobre el área del juego."
+            />
+            <HelpStep
+              num={3}
+              title="Si conectaste el mando después, reinicia el core"
+              body="Algunos núcleos no detectan mandos a mitad de partida. Usa el botón 'Reiniciar' arriba a la derecha."
+            />
+            <HelpStep
+              num={4}
+              title="Configura los botones en el menú de EmulatorJS"
+              body="Pulsa el icono del engranaje dentro del juego → 'Options' → 'Controls'. Ahí puedes mapear cada botón manualmente si el auto-mapeo no funciona."
+            />
+          </ol>
+
+          {/* CTA */}
+          <div className="flex flex-col sm:flex-row gap-2 mb-5">
+            <button
+              type="button"
+              onClick={() => {
+                onRestart();
+                onClose();
+              }}
+              className="nexo-btn-primary !py-2 !text-sm flex-1"
+            >
+              <svg
+                aria-hidden="true"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+              >
+                <path
+                  d="M21 12a9 9 0 11-3.5-7.1M21 4v5h-5"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+              Reiniciar core ahora
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="nexo-btn-ghost !py-2 !text-sm flex-1"
+            >
+              Entendido
+            </button>
+          </div>
+
+          {/* Troubleshooting avanzado */}
+          <details className="border border-nexo-border rounded-lg p-3 bg-nexo-surface/40">
+            <summary className="text-sm text-nexo-cream cursor-pointer">
+              Soluciones avanzadas →
+            </summary>
+            <ul className="mt-3 space-y-2 text-xs text-nexo-muted leading-relaxed">
+              <li>
+                <strong className="text-nexo-cream">8BitDo:</strong> debe
+                estar en modo X (XInput). Mantén X + Start al encenderlo
+                hasta que el LED parpadee rápido.
+              </li>
+              <li>
+                <strong className="text-nexo-cream">DualShock 4:</strong>{" "}
+                mantén Share + PS hasta que el LED parpadee para emparejar
+                por Bluetooth.
+              </li>
+              <li>
+                <strong className="text-nexo-cream">DualSense:</strong> mantén
+                Share + PS hasta que el LED parpadee azul rápido.
+              </li>
+              <li>
+                <strong className="text-nexo-cream">Xbox One/Series:</strong>{" "}
+                mantén el botón Sync (arriba) hasta que el LED parpadee.
+              </li>
+              <li>
+                <strong className="text-nexo-cream">USB:</strong> usa cable de
+                datos. Si el mando aparece en el SO pero no en el navegador,
+                prueba otro cable.
+              </li>
+              <li>
+                <strong className="text-nexo-cream">Mapeo manual:</strong> en
+                EmulatorJS → Settings → Input → &quot;Input User 1 Binds&quot; →
+                pulsa cada botón para asignarlo.
+              </li>
+              <li>
+                <strong className="text-nexo-cream">Mando 2:</strong> para
+                multijugador, en Settings → Input → Input User 2 →
+                selecciona el segundo gamepad.
+              </li>
+            </ul>
+          </details>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HelpStep({
+  num,
+  title,
+  body,
+}: {
+  num: number;
+  title: string;
+  body: string;
+}) {
+  return (
+    <li className="flex gap-3 p-3 rounded-lg border border-nexo-border bg-nexo-surface/40">
+      <span className="shrink-0 w-7 h-7 rounded-full bg-nexo-green text-nexo-bg flex items-center justify-center text-sm font-semibold font-mono">
+        {num}
+      </span>
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-nexo-cream">{title}</p>
+        <p className="text-xs text-nexo-muted mt-1 leading-relaxed">{body}</p>
+      </div>
+    </li>
   );
 }
 
