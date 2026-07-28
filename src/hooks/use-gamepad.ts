@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 export interface GamepadInfo {
   index: number;
@@ -216,11 +216,8 @@ interface UseGamepadOptions {
  *    requieren esto para exponer gamepads
  * 4. Función `forceScan()` que el usuario puede invocar manualmente
  *
- * Además expone diagnóstico:
- * - Si la API es soportada
- * - Si el contexto es seguro (HTTPS / localhost)
- * - Navegador y SO detectados
- * - Número de scans realizados
+ * Usa `useSyncExternalStore` para leer APIs del navegador sin causar
+ * hydration mismatch (React #418). En SSR devuelve valores seguros.
  */
 export function useGamepad(options: UseGamepadOptions = {}) {
   const {
@@ -229,10 +226,32 @@ export function useGamepad(options: UseGamepadOptions = {}) {
     listenForGestures = true,
   } = options;
 
-  const [supported] = useState<boolean>(checkGamepadSupport);
-  const [secureContext] = useState<boolean>(checkSecureContext);
-  const [browser] = useState<string>(detectBrowser);
-  const [platform] = useState<string>(detectPlatform);
+  // useSyncExternalStore evita hydration mismatch:
+  // - getServerSnapshot devuelve false/"" (igual que SSR)
+  // - getSnapshot lee el valor real del navegador
+  // - React usa getServerSnapshot durante hydration y getSnapshot después
+  const emptySubscribe = useCallback(() => () => {}, []);
+  const supported = useSyncExternalStore(
+    emptySubscribe,
+    checkGamepadSupport,
+    () => false,
+  );
+  const secureContext = useSyncExternalStore(
+    emptySubscribe,
+    checkSecureContext,
+    () => false,
+  );
+  const browser = useSyncExternalStore(
+    emptySubscribe,
+    detectBrowser,
+    () => "desconocido",
+  );
+  const platform = useSyncExternalStore(
+    emptySubscribe,
+    detectPlatform,
+    () => "desconocido",
+  );
+
   const [gamepads, setGamepads] = useState<GamepadInfo[]>([]);
   const [scanCount, setScanCount] = useState(0);
   const [lastScan, setLastScan] = useState<number | null>(null);

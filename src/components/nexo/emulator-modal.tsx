@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNexoStore } from "@/store/nexo-store";
 import {
   EJS_LOADER_URL,
@@ -28,20 +28,127 @@ function checkBrowserSupport(): boolean {
 }
 
 /**
+ * Genera el HTML completo para el iframe que carga EmulatorJS.
+ *
+ * Usamos un iframe aislado para:
+ * - Evitar el error "Identifier 'EJS_STORAGE' has already been declared"
+ *   que ocurre al reabrir un juego (EmulatorJS declara constantes globales
+ *   que no se pueden limpiar)
+ * - Aislar el estado del emulador del resto de la aplicación
+ * - Limpiar completamente la memoria al cerrar (basta con remover el iframe)
+ *
+ * La comunicación parent ↔ iframe se hace con postMessage:
+ * - Parent → iframe: { type: 'restart' }, { type: 'fullscreen' }
+ * - Iframe → parent: { type: 'started' }, { type: 'error', message }
+ */
+function buildEmulatorHTML(params: {
+  core: string;
+  gameName: string;
+  gameUrl: string;
+}): string {
+  const { core, gameName, gameUrl } = params;
+  // JSON.stringify escapa correctamente las comillas y caracteres especiales
+  return `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; background: #171814; overflow: hidden; }
+  #game { width: 100vw; height: 100vh; }
+  /* Ocultar elementos no necesarios de EmulatorJS */
+  .ejs_ad_iframe, .ejs_ad_banner { display: none !important; }
+</style>
+</head>
+<body>
+<div id="game"></div>
+<script>
+  // Configuración de EmulatorJS
+  window.EJS_player = '#game';
+  window.EJS_core = ${JSON.stringify(core)};
+  window.EJS_gameName = ${JSON.stringify(gameName)};
+  window.EJS_gameUrl = ${JSON.stringify(gameUrl)};
+  window.EJS_pathtodata = ${JSON.stringify(EJS_PATH_TO_DATA)};
+  window.EJS_startOnLoaded = true;
+  window.EJS_gamepad = true;
+  window.EJS_gamepadModel = 1;
+  window.EJS_color = '#B8FF3D';
+  window.EJS_backgroundColor = '#171814';
+  window.EJS_onGameStart = function() {
+    parent.postMessage({ type: 'started', source: 'nexo-emulator' }, '*');
+    // Auto-focar el canvas
+    setTimeout(function() {
+      var canvas = document.querySelector('#game canvas');
+      if (canvas) {
+        canvas.setAttribute('tabindex', '0');
+        canvas.focus();
+      }
+    }, 300);
+  };
+
+  // Escuchar comandos del parent
+  window.addEventListener('message', function(e) {
+    var data = e.data || {};
+    if (data.source !== 'nexo-parent') return;
+    var emu = window.EJS_emulator;
+    if (!emu) return;
+
+    if (data.type === 'restart') {
+      try {
+        if (typeof emu.restart === 'function') {
+          emu.restart();
+        } else if (emu.Module && emu.Module._system_restart) {
+          emu.Module._system_restart();
+        }
+      } catch (err) {
+        console.warn('[NEXO-iframe] Error al reiniciar:', err);
+      }
+      // Forzar verificación de gamepad
+      setTimeout(function() {
+        if (typeof emu.checkGamepadInputs === 'function') {
+          emu.checkGamepadInputs();
+        }
+        var canvas = document.querySelector('#game canvas');
+        if (canvas) canvas.focus();
+      }, 300);
+    }
+
+    if (data.type === 'fullscreen') {
+      try {
+        if (typeof emu.toggleFullscreen === 'function') {
+          emu.toggleFullscreen();
+        }
+      } catch (err) {
+        console.warn('[NEXO-iframe] Error fullscreen:', err);
+      }
+    }
+  });
+
+  // Reportar errores al parent
+  window.addEventListener('error', function(e) {
+    // Filtrar errores conocidos de EmulatorJS que no son críticos
+    var msg = e.message || '';
+    if (msg.indexOf('exitFullscreen') !== -1) return;
+    if (msg.indexOf("Cannot read properties of undefined") !== -1 && msg.indexOf("'id'") !== -1) return;
+    parent.postMessage({
+      type: 'error',
+      source: 'nexo-emulator',
+      message: msg
+    }, '*');
+  });
+</script>
+<script src="${EJS_LOADER_URL}"></script>
+</body>
+</html>`;
+}
+
+/**
  * Modal accesible del emulador.
  *
- * Carga EmulatorJS bajo demanda, solo cuando el usuario elige un archivo.
- * Maneja:
- * - Cierre con Escape y botón "Cerrar ×"
- * - Trampa de foco y retorno al elemento que abrió el modal
- * - Bloqueo de scroll del cuerpo
- * - Estado de carga del core
- * - Detección de fallos (WebAssembly / WebGL / SharedArrayBuffer)
- * - Limpieza del script, contenedor y Object URL al cerrar
- *
- * EmulatorJS expone su configuración a través del objeto global `window.EJS_*`.
- * Una vez que el loader.js se ejecuta, busca esas variables y monta el
- * reproductor dentro del selector indicado por `EJS_player`.
+ * Carga EmulatorJS en un iframe aislado que se destruye al cerrar,
+ * evitando conflictos de constantes globales (EJS_STORAGE, etc.)
+ * y limpiando completamente la memoria.
  */
 export function EmulatorModal() {
   const {
@@ -57,8 +164,7 @@ export function EmulatorModal() {
   } = useNexoStore();
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const gameDivRef = useRef<HTMLDivElement>(null);
-  const scriptRef = useRef<HTMLScriptElement | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const closeBtnRef = useRef<HTMLButtonElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const supported = useMemo(() => checkBrowserSupport(), []);
@@ -68,112 +174,15 @@ export function EmulatorModal() {
   >("idle");
 
   /**
-   * Reinicia el core de EmulatorJS. Útil cuando el usuario conecta el
-   * mando después de que el juego haya cargado — algunos cores no
-   * detectan el gamepad a mitad de partida.
+   * Crea el iframe con EmulatorJS cuando el modal se abre.
    */
-  const restartCore = () => {
-    const w = window as unknown as {
-      EJS_emulator?: {
-        restart?: () => void;
-        toggleGamepad?: (n: number) => void;
-        checkGamepadInputs?: () => void;
-        toggleVirtualGamepad?: () => void;
-        Module?: {
-          _system_restart?: () => void;
-          _toggleMainLoop?: () => void;
-        };
-      };
-    };
-    const emu = w.EJS_emulator;
-    if (!emu) {
-      console.warn("[NEXO] EJS_emulator no disponible");
-      return;
-    }
-
-    let restarted = false;
-    // Método 1: restart directo (algunas versiones)
-    if (typeof emu.restart === "function") {
-      try {
-        emu.restart();
-        restarted = true;
-        console.info("[NEXO] Core reiniciado vía emu.restart()");
-      } catch (e) {
-        console.warn("[NEXO] Error en emu.restart():", e);
-      }
-    }
-    // Método 2: _system_restart del módulo WASM
-    if (!restarted && emu.Module?._system_restart) {
-      try {
-        emu.Module._system_restart();
-        restarted = true;
-        console.info("[NEXO] Core reiniciado vía Module._system_restart()");
-      } catch (e) {
-        console.warn("[NEXO] Error en _system_restart():", e);
-      }
-    }
-
-    // Si no se pudo reiniciar, al menos forzamos detección de gamepad
-    if (!restarted) {
-      console.warn(
-        "[NEXO] No se encontró método de reinicio. Forzando solo detección de gamepad.",
-      );
-      setRestartStatus("failed");
-      setTimeout(() => setRestartStatus("idle"), 4000);
-    } else {
-      setRestartStatus("ok");
-      setTimeout(() => setRestartStatus("idle"), 2000);
-    }
-
-    // Re-forzar detección de gamepad (siempre, también si el reinicio falló)
-    setTimeout(() => {
-      try {
-        if (typeof emu.checkGamepadInputs === "function") {
-          emu.checkGamepadInputs();
-          console.info("[NEXO] checkGamepadInputs() invocado");
-        }
-      } catch (e) {
-        console.warn("[NEXO] Error en checkGamepadInputs():", e);
-      }
-      // Re-focar el canvas
-      const canvas = document.querySelector<HTMLCanvasElement>(
-        "#game canvas",
-      );
-      if (canvas) {
-        canvas.focus();
-        console.info("[NEXO] Canvas re-focado tras reinicio");
-      }
-    }, 500);
-  };
-
-  /**
-   * Pulsa el botón de "pantalla completa" de EmulatorJS si está disponible.
-   */
-  const toggleFullscreen = () => {
-    const w = window as unknown as {
-      EJS_emulator?: { toggleFullscreen?: () => void };
-    };
-    const emu = w.EJS_emulator;
-    if (emu && typeof emu.toggleFullscreen === "function") {
-      try {
-        emu.toggleFullscreen();
-      } catch (e) {
-        console.warn("[NEXO] Error al activar pantalla completa:", e);
-      }
-    }
-  };
-
-  // Cargar EmulatorJS cuando se abre el modal
   useEffect(() => {
     if (!playing || !activeSystem || !objectUrl) return;
 
     // Guardar foco anterior
     previousFocusRef.current = document.activeElement as HTMLElement;
-
-    // Bloquear scroll
     document.body.style.overflow = "hidden";
 
-    // Verificar compatibilidad
     if (!supported) {
       setPlayerError(
         "Tu navegador no soporta WebAssembly o WebGL, necesarios para la emulación. Prueba con Chrome, Firefox o Edge reciente.",
@@ -181,111 +190,61 @@ export function EmulatorModal() {
       return;
     }
 
-    // Limpiar configuración previa (por si se abrió y cerró antes)
-    const w = window as unknown as Record<string, unknown>;
-    delete w.EJS_player;
-    delete w.EJS_core;
-    delete w.EJS_gameName;
-    delete w.EJS_gameUrl;
-    delete w.EJS_pathtodata;
-    delete w.EJS_startOnLoaded;
-    delete w.EJS_onGameStart;
-    delete w.EJS_gamepad;
-    delete w.EJS_VirtualGamepadSettings;
-
-    // Sanitizar el nombre visible: quitar extensión
+    // Sanitizar el nombre visible
     const safeName = (activeFileName ?? "juego")
       .replace(/\.[^/.]+$/, "")
       .replace(/[^\w\- ]/g, "")
       .slice(0, 60) || "juego";
 
-    // Configurar EmulatorJS
-    w.EJS_player = "#game";
-    w.EJS_core = activeSystem.core;
-    w.EJS_gameName = safeName;
-    w.EJS_gameUrl = objectUrl;
-    w.EJS_pathtodata = EJS_PATH_TO_DATA;
-    w.EJS_startOnLoaded = true;
-    // Activar soporte nativo de mandos (Gamepad API) en EmulatorJS
-    w.EJS_gamepad = true;
-    // Modelo de gamepad por defecto (1 = estándar Xbox/layout)
-    w.EJS_gamepadModel = 1;
-    // Mostrar el botón de pantalla completa
-    w.EJS_fullscreenOnLoaded = false;
-    // Color del tema para que combine con NEXO
-    w.EJS_color = "#B8FF3D";
-    w.EJS_backgroundColor = "#171814";
-    w.EJS_onGameStart = () => {
-      markRunning();
-      // Auto-focus del canvas para que reciba input del teclado y mando
-      setTimeout(() => {
-        const canvas = document.querySelector<HTMLCanvasElement>(
-          "#game canvas",
-        );
-        if (canvas) {
-          canvas.setAttribute("tabindex", "0");
-          canvas.focus();
-          console.info("[NEXO] Canvas auto-focado para recibir input");
-        }
-        // Forzar verificación de gamepad en EmulatorJS
-        const emu = (w as unknown as {
-          EJS_emulator?: {
-            checkGamepadInputs?: () => void;
-          };
-        }).EJS_emulator;
-        if (emu && typeof emu.checkGamepadInputs === "function") {
-          try {
-            emu.checkGamepadInputs();
-            console.info("[NEXO] checkGamepadInputs() invocado al iniciar");
-          } catch (e) {
-            console.warn("[NEXO] Error en checkGamepadInputs:", e);
-          }
-        }
-        // Log de métodos disponibles para depuración
-        if (emu) {
-          const methods = Object.keys(emu).filter(
-            (k) => typeof (emu as unknown as Record<string, unknown>)[k] === "function",
-          );
-          console.info("[NEXO] Métodos de EJS_emulator disponibles:", methods);
-        }
-      }, 500);
-    };
-
-    // Crear el div #game dentro del contenedor
-    if (gameDivRef.current) {
-      gameDivRef.current.innerHTML = "";
-      const game = document.createElement("div");
-      game.id = "game";
-      game.style.width = "100%";
-      game.style.height = "100%";
-      gameDivRef.current.appendChild(game);
+    // Crear el iframe fresco
+    if (containerRef.current) {
+      containerRef.current.innerHTML = "";
+      const iframe = document.createElement("iframe");
+      iframe.title = `Reproductor de ${activeSystem.name}`;
+      iframe.style.width = "100%";
+      iframe.style.height = "100%";
+      iframe.style.border = "none";
+      iframe.style.background = "#000";
+      iframe.allow = "autoplay; fullscreen; gamepad; cross-origin-isolated";
+      iframe.allowFullscreen = true;
+      iframe.srcdoc = buildEmulatorHTML({
+        core: activeSystem.core,
+        gameName: safeName,
+        gameUrl: objectUrl,
+      });
+      containerRef.current.appendChild(iframe);
+      iframeRef.current = iframe;
+      console.info("[NEXO] Iframe de EmulatorJS creado (core:", activeSystem.core, ")");
     }
 
-    // Cargar el script del loader
-    const script = document.createElement("script");
-    script.src = EJS_LOADER_URL;
-    script.async = true;
-    script.onerror = () => {
-      setPlayerError(
-        "No se pudo cargar el runtime del emulador desde el CDN. Verifica tu conexión e inténtalo de nuevo.",
-      );
+    // Escuchar mensajes del iframe
+    const onMessage = (e: MessageEvent) => {
+      const data = e.data || {};
+      if (data.source !== "nexo-emulator") return;
+      if (data.type === "started") {
+        markRunning();
+        console.info("[NEXO] Juego iniciado según iframe");
+      }
+      if (data.type === "error" && data.message) {
+        console.warn("[NEXO] Error del iframe:", data.message);
+      }
     };
-    scriptRef.current = script;
-    document.body.appendChild(script);
+    window.addEventListener("message", onMessage);
 
-    // Timeout de seguridad: si en 30s no hemos pasado a "running", mostramos error recuperable
+    // Timeout de seguridad
     const safety = window.setTimeout(() => {
       if (useNexoStore.getState().status === "loading-core") {
         setPlayerError(
           "El núcleo está tardando demasiado en cargar. Puede ser un problema de conexión con el CDN o de compatibilidad del navegador.",
         );
       }
-    }, 30000);
+    }, 45000);
 
     return () => {
+      window.removeEventListener("message", onMessage);
       window.clearTimeout(safety);
     };
-  }, [playing, activeSystem, objectUrl, supported]);
+  }, [playing, activeSystem, objectUrl, supported, markRunning, setPlayerError]);
 
   // Manejo de Escape y trampa de foco
   useEffect(() => {
@@ -297,35 +256,9 @@ export function EmulatorModal() {
         close();
         return;
       }
-      if (e.key === "Tab" && containerRef.current && closeBtnRef.current) {
-        // Trampa simple: solo el botón de cerrar es enfocable
-        const focusable = containerRef.current.querySelectorAll<HTMLElement>(
-          'button, [href], input, [tabindex]:not([tabindex="-1"])',
-        );
-        // Filtrar los que están realmente visibles/enfocables
-        const visible = Array.from(focusable).filter(
-          (el) => !el.hasAttribute("disabled"),
-        );
-        if (visible.length === 0) {
-          e.preventDefault();
-          closeBtnRef.current.focus();
-          return;
-        }
-        const first = visible[0];
-        const last = visible[visible.length - 1];
-        if (e.shiftKey && document.activeElement === first) {
-          e.preventDefault();
-          last.focus();
-        } else if (!e.shiftKey && document.activeElement === last) {
-          e.preventDefault();
-          first.focus();
-        }
-      }
     };
 
     window.addEventListener("keydown", onKey);
-
-    // Foco inicial al botón de cerrar (tras montar)
     const t = window.setTimeout(() => {
       closeBtnRef.current?.focus();
     }, 50);
@@ -336,39 +269,16 @@ export function EmulatorModal() {
     };
   }, [playing, close]);
 
-  // Limpieza al cerrar: revocar URL, eliminar script, restaurar foco
+  // Limpieza al cerrar: destruir iframe y revocar Object URL
   useEffect(() => {
     if (playing) return;
 
-    // Eliminar script del loader
-    if (scriptRef.current) {
-      scriptRef.current.remove();
-      scriptRef.current = null;
+    // Destruir el iframe — esto limpia TODO el estado de EmulatorJS
+    // (constantes globales, WebAssembly, canvas, audio, gamepad polling)
+    if (containerRef.current) {
+      containerRef.current.innerHTML = "";
     }
-    // Vaciar contenedor de juego
-    if (gameDivRef.current) {
-      gameDivRef.current.innerHTML = "";
-    }
-    // Limpiar variables globales de EmulatorJS
-    const w = window as unknown as Record<string, unknown>;
-    [
-      "EJS_player",
-      "EJS_core",
-      "EJS_gameName",
-      "EJS_gameUrl",
-      "EJS_pathtodata",
-      "EJS_startOnLoaded",
-      "EJS_onGameStart",
-      "EJS_gamepad",
-      "EJS_VirtualGamepadSettings",
-      "EJS_emulator",
-    ].forEach((k) => {
-      try {
-        delete w[k];
-      } catch {
-        /* noop */
-      }
-    });
+    iframeRef.current = null;
 
     // Restaurar scroll y foco
     document.body.style.overflow = "";
@@ -376,6 +286,29 @@ export function EmulatorModal() {
       previousFocusRef.current.focus();
     }
   }, [playing]);
+
+  /**
+   * Envía un comando al iframe de EmulatorJS vía postMessage.
+   */
+  const sendToIframe = useCallback((type: "restart" | "fullscreen") => {
+    const iframe = iframeRef.current;
+    if (!iframe || !iframe.contentWindow) return;
+    iframe.contentWindow.postMessage(
+      { source: "nexo-parent", type },
+      "*",
+    );
+  }, []);
+
+  const restartCore = () => {
+    sendToIframe("restart");
+    setRestartStatus("ok");
+    setTimeout(() => setRestartStatus("idle"), 2000);
+    console.info("[NEXO] Comando 'restart' enviado al iframe");
+  };
+
+  const toggleFullscreen = () => {
+    sendToIframe("fullscreen");
+  };
 
   if (!playing) return null;
 
@@ -394,10 +327,7 @@ export function EmulatorModal() {
       />
 
       {/* Contenedor del juego */}
-      <div
-        ref={containerRef}
-        className="relative w-full max-w-[1100px] h-[calc(100vh-3rem)] max-h-[720px] bg-nexo-bg border border-nexo-border rounded-2xl overflow-hidden flex flex-col"
-      >
+      <div className="relative w-full max-w-[1100px] h-[calc(100vh-3rem)] max-h-[720px] bg-nexo-bg border border-nexo-border rounded-2xl overflow-hidden flex flex-col">
         {/* Barra superior */}
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-nexo-border bg-nexo-surface/50 gap-3">
           <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -419,10 +349,10 @@ export function EmulatorModal() {
                 {activeFileName}
               </p>
             </div>
-            {/* Indicador de mando — visible en todas las resoluciones */}
+            {/* Indicador de mando */}
             <GamepadPanel variant="compact" intervalMs={80} />
           </div>
-          {/* Controles adicionales — solo cuando el juego está corriendo */}
+          {/* Controles adicionales */}
           {status === "running" && (
             <div className="shrink-0 flex items-center gap-1.5">
               <button
@@ -432,13 +362,7 @@ export function EmulatorModal() {
                 aria-label="Ayuda para configurar el mando"
                 title="¿Mando no funciona en el juego?"
               >
-                <svg
-                  aria-hidden="true"
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                >
+                <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none">
                   <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.6" />
                   <path d="M9.5 9a2.5 2.5 0 015 0c0 2-2.5 2-2.5 4M12 17h.01" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
                 </svg>
@@ -450,28 +374,16 @@ export function EmulatorModal() {
                 className={`hidden sm:inline-flex items-center gap-1 px-2 py-1.5 rounded-md border text-xs transition-colors ${
                   restartStatus === "ok"
                     ? "border-nexo-green text-nexo-green bg-nexo-green/10"
-                    : restartStatus === "failed"
-                      ? "border-nexo-green/50 text-nexo-green/70"
-                      : "border-nexo-border text-nexo-muted hover:border-nexo-green hover:text-nexo-green"
+                    : "border-nexo-border text-nexo-muted hover:border-nexo-green hover:text-nexo-green"
                 }`}
                 aria-label="Reiniciar el núcleo del emulador"
                 title="Reiniciar core (útil si conectaste el mando después de abrir el juego)"
               >
-                <svg
-                  aria-hidden="true"
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                >
+                <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none">
                   <path d="M21 12a9 9 0 11-3.5-7.1M21 4v5h-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
                 <span className="hidden md:inline">
-                  {restartStatus === "ok"
-                    ? "¡Gamepad listo!"
-                    : restartStatus === "failed"
-                      ? "Fuerza detección"
-                      : "Reiniciar"}
+                  {restartStatus === "ok" ? "¡Listo!" : "Reiniciar"}
                 </span>
               </button>
               <button
@@ -481,13 +393,7 @@ export function EmulatorModal() {
                 aria-label="Pantalla completa"
                 title="Pantalla completa"
               >
-                <svg
-                  aria-hidden="true"
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                >
+                <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none">
                   <path d="M3 9V3h6M21 9V3h-6M3 15v6h6M21 15v6h-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </button>
@@ -505,10 +411,9 @@ export function EmulatorModal() {
           </button>
         </div>
 
-        {/* Área de juego */}
+        {/* Área de juego — el iframe se inyecta aquí */}
         <div className="relative flex-1 bg-black flex items-center justify-center overflow-hidden">
-          {/* Contenedor donde EmulatorJS monta el reproductor */}
-          <div ref={gameDivRef} className="w-full h-full" />
+          <div ref={containerRef} className="w-full h-full" />
 
           {/* Estado de carga */}
           {status === "loading-core" && !playerError && (
@@ -516,9 +421,7 @@ export function EmulatorModal() {
               <span
                 aria-hidden="true"
                 className="w-10 h-10 border-2 border-nexo-border border-t-nexo-green rounded-full"
-                style={{
-                  animation: "nexo-spin-slow 0.9s linear infinite",
-                }}
+                style={{ animation: "nexo-spin-slow 0.9s linear infinite" }}
               />
               <p className="text-nexo-cream text-sm" aria-live="polite">
                 Cargando el núcleo de {activeSystem?.shortName}…
@@ -534,13 +437,7 @@ export function EmulatorModal() {
           {playerError && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-nexo-bg/95 p-6 text-center">
               <div className="w-12 h-12 rounded-full border border-nexo-border flex items-center justify-center text-nexo-green">
-                <svg
-                  aria-hidden="true"
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                >
+                <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none">
                   <path
                     d="M12 9v4m0 4h.01M10.29 3.86l-8.18 14.18A2 2 0 003.83 21h16.34a2 2 0 001.72-2.96L13.71 3.86a2 2 0 00-3.42 0z"
                     stroke="currentColor"
@@ -550,23 +447,16 @@ export function EmulatorModal() {
                   />
                 </svg>
               </div>
-              <p
-                className="text-nexo-cream text-sm max-w-md"
-                aria-live="assertive"
-              >
+              <p className="text-nexo-cream text-sm max-w-md" aria-live="assertive">
                 {playerError}
               </p>
-              <button
-                type="button"
-                onClick={close}
-                className="nexo-btn-ghost mt-2"
-              >
+              <button type="button" onClick={close} className="nexo-btn-ghost mt-2">
                 Cerrar y volver
               </button>
             </div>
           )}
 
-          {/* Overlay de ayuda para configurar el mando */}
+          {/* Overlay de ayuda */}
           {showHelp && (
             <HelpOverlay
               onClose={() => setShowHelp(false)}
@@ -579,10 +469,6 @@ export function EmulatorModal() {
   );
 }
 
-/**
- * Overlay con instrucciones paso a paso para que el mando funcione
- * dentro del juego de EmulatorJS.
- */
 function HelpOverlay({
   onClose,
   onRestart,
@@ -598,7 +484,6 @@ function HelpOverlay({
     >
       <div className="min-h-full flex items-start justify-center p-4 sm:p-6">
         <div className="w-full max-w-lg my-4">
-          {/* Cabecera */}
           <div className="flex items-center justify-between mb-5">
             <h3 className="nexo-display text-nexo-cream text-xl">
               ¿Mando no funciona?
@@ -613,7 +498,6 @@ function HelpOverlay({
             </button>
           </div>
 
-          {/* Pasos */}
           <ol className="space-y-3 mb-5">
             <HelpStep
               num={1}
@@ -637,7 +521,6 @@ function HelpOverlay({
             />
           </ol>
 
-          {/* CTA */}
           <div className="flex flex-col sm:flex-row gap-2 mb-5">
             <button
               type="button"
@@ -647,13 +530,7 @@ function HelpOverlay({
               }}
               className="nexo-btn-primary !py-2 !text-sm flex-1"
             >
-              <svg
-                aria-hidden="true"
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-              >
+              <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none">
                 <path
                   d="M21 12a9 9 0 11-3.5-7.1M21 4v5h-5"
                   stroke="currentColor"
@@ -673,7 +550,6 @@ function HelpOverlay({
             </button>
           </div>
 
-          {/* Troubleshooting avanzado */}
           <details className="border border-nexo-border rounded-lg p-3 bg-nexo-surface/40">
             <summary className="text-sm text-nexo-cream cursor-pointer">
               Soluciones avanzadas →
@@ -741,4 +617,3 @@ function HelpStep({
     </li>
   );
 }
-

@@ -9,8 +9,6 @@ const nextConfig: NextConfig = {
   // Cabeceras necesarias para SharedArrayBuffer (usado por varios núcleos
   // de EmulatorJS). `credentialless` permite cargar recursos cross-origin
   // (como el CDN de EmulatorJS) sin exigir CORP explícito.
-  // Si auto-alojas EmulatorJS, puedes cambiar a `require-corp` para máxima
-  // seguridad.
   async headers() {
     return [
       {
@@ -24,7 +22,21 @@ const nextConfig: NextConfig = {
             key: "Cross-Origin-Embedder-Policy",
             value: "credentialless",
           },
+          {
+            key: "X-Content-Type-Options",
+            value: "nosniff",
+          },
         ],
+      },
+    ];
+  },
+  // Redirect favicon.ico → favicon.svg (los navegadores lo piden automáticamente)
+  async redirects() {
+    return [
+      {
+        source: "/favicon.ico",
+        destination: "/favicon.svg",
+        permanent: false,
       },
     ];
   },
