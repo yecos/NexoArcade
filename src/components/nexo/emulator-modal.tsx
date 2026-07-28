@@ -64,7 +64,89 @@ function buildEmulatorHTML(params: {
 <body>
 <div id="game"></div>
 <script>
-  // Configuración de EmulatorJS
+  // ============================================================
+  // PARCHES DE COMPATIBILIDAD — deben ir ANTES de cargar EmulatorJS
+  // ============================================================
+
+  // Parche 1: navigator.getGamepads()
+  // EmulatorJS itera el resultado sin filtrar nulls, causando
+  // "Cannot read properties of undefined (reading 'id')" cuando
+  // algún slot está vacío (los navegadores devuelven 4 slots fijos).
+  // Devolvemos un array limpio sin nulls.
+  (function() {
+    var originalGetGamepads = navigator.getGamepads ? navigator.getGamepads.bind(navigator) : null;
+    if (!originalGetGamepads) return;
+    navigator.getGamepads = function() {
+      try {
+        var all = originalGetGamepads() || [];
+        var result = [];
+        for (var i = 0; i < all.length; i++) {
+          if (all[i]) result.push(all[i]);
+        }
+        // Mantener la longitud esperada rellenando con null al final
+        // para no romper código que itera por índice
+        while (result.length < 4) result.push(null);
+        return result;
+      } catch (e) {
+        return [null, null, null, null];
+      }
+    };
+  })();
+
+  // Parche 2: document.exitFullscreen()
+  // EmulatorJS llama a exitFullscreen al cerrar, pero el documento
+  // del iframe ya está inactivo → TypeError "Document not active".
+  // Capturamos el error silenciosamente.
+  (function() {
+    var originalExit = document.exitFullscreen ? document.exitFullscreen.bind(document) : null;
+    if (!originalExit) return;
+    document.exitFullscreen = function() {
+      try {
+        var promise = originalExit();
+        if (promise && typeof promise.catch === 'function') {
+          promise.catch(function() { /* noop — iframe cerrándose */ });
+        }
+        return promise;
+      } catch (e) {
+        // Document not active — ignorar silenciosamente
+        return Promise.resolve();
+      }
+    };
+  })();
+
+  // Parche 3: Capturar errores globales no críticos de EmulatorJS
+  // Algunos errores internos de emulator.min.js no afectan al
+  // funcionamiento pero ensucian la consola.
+  var suppressPatterns = [
+    "Cannot read properties of undefined (reading 'id')",
+    "exitFullscreen",
+    "Document not active"
+  ];
+  window.addEventListener('error', function(e) {
+    var msg = e.message || '';
+    for (var i = 0; i < suppressPatterns.length; i++) {
+      if (msg.indexOf(suppressPatterns[i]) !== -1) {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+      }
+    }
+  }, true);
+
+  // Parche 4: Capturar promesas rechazadas no críticas
+  window.addEventListener('unhandledrejection', function(e) {
+    var msg = (e.reason && e.reason.message) || '';
+    for (var i = 0; i < suppressPatterns.length; i++) {
+      if (msg.indexOf(suppressPatterns[i]) !== -1) {
+        e.preventDefault();
+        return false;
+      }
+    }
+  });
+
+  // ============================================================
+  // CONFIGURACIÓN DE EMULATORJS
+  // ============================================================
   window.EJS_player = '#game';
   window.EJS_core = ${JSON.stringify(core)};
   window.EJS_gameName = ${JSON.stringify(gameName)};
